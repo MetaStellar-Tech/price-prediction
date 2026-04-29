@@ -153,7 +153,7 @@ This protects users from unexpected price movement and prevents a large order fr
 
 ## Settlement And Payout Algorithm
 
-Settlement is operator-only and can run only after `round.settleTime`.
+Settlement is permissionless after `round.settleTime`. It can be called from `Betting` or `BettingClosed`. Calling `settle` from `Betting` after the deadline effectively closes the round and prevents operator withholding.
 
 The contract reads the final BTC price once from Hyperliquid CoreRead and stores it as `finalPriceE8`.
 
@@ -163,6 +163,13 @@ Outcome:
 finalPriceE8 > basePriceE8 => Outcome.Up
 finalPriceE8 < basePriceE8 => Outcome.Down
 finalPriceE8 = basePriceE8 => Outcome.Draw
+```
+
+If the price points to a side with no winning shares, the round is a no-contest:
+
+```text
+Outcome.Up candidate and upShares == 0     => Outcome.NoContest
+Outcome.Down candidate and downShares == 0 => Outcome.NoContest
 ```
 
 ### Non-Draw Settlement
@@ -207,11 +214,13 @@ Losers receive zero in non-draw rounds.
 
 The protocol transfers `fee` to `feeRecipient` after all participant payouts are processed.
 
-### Draw Settlement
+### Draw And No-Contest Settlement
 
 A draw occurs when final BTC price equals the base BTC price.
 
-There is no winner, loser, or protocol fee:
+No-contest occurs when the final BTC price points to an empty winning side.
+
+There is no winner, loser, or protocol fee in either case:
 
 ```text
 fee = 0
@@ -224,10 +233,11 @@ userPayout = user.upStake + user.downStake
 ```
 
 Shares do not affect draw refunds.
+Shares do not affect no-contest refunds.
 
 ### Batched Cleanup
 
-`cleanup(roundId, maxCount)` is permissionless and push-based.
+`cleanup(roundId, maxCount)` is permissionless and push-first.
 
 The round stores `cleanupIndex`. Each cleanup call processes:
 
@@ -235,7 +245,19 @@ The round stores `cleanupIndex`. Each cleanup call processes:
 participants[cleanupIndex ... cleanupIndex + maxCount)
 ```
 
-After a participant is processed, `cleanupIndex` advances. This makes cleanup monotonic and prevents double payment.
+Before each participant payout transfer, `cleanupIndex` advances. This makes cleanup monotonic and prevents double payment even if the stake token has callback behavior. Cleanup is also protected by a reentrancy guard.
+
+If a payout transfer fails, the amount is credited to:
+
+```text
+pendingPayouts[user]
+```
+
+The cleanup batch continues and the user can later call:
+
+```text
+claimPendingPayout()
+```
 
 When all participants are processed:
 
@@ -244,7 +266,22 @@ feeTransferred = true
 state = Cleaned
 ```
 
-Then the fee is transferred to `feeRecipient` if `fee > 0`.
+Then the fee is transferred to `feeRecipient` if `fee > 0`. If the fee transfer fails, the amount is credited to `pendingPayouts[feeRecipient]`.
+
+## Round Config Snapshots
+
+The following values are snapshotted when a round starts:
+
+```text
+pricingConfig
+feeBps
+feeRecipient
+roundDuration
+btcPerpIndex
+btcSzDecimals
+```
+
+Admin updates affect only future rounds. This prevents a live round from using one oracle or pricing config at start and another at settlement or late betting.
 
 ## Rounding
 

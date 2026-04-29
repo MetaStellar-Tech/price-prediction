@@ -13,7 +13,8 @@ HyperEVM is the betting and settlement truth layer. HyperCore is the oracle pric
 - Winners receive pro-rata payouts by winning shares.
 - Protocol fee is charged only from the losing pool.
 - Draw rounds refund original stake and charge no fee.
-- Anyone can call batched `cleanup` to push payouts.
+- No-winner rounds are no-contest rounds and refund original stake.
+- Anyone can settle after the deadline and call batched `cleanup`.
 
 ## Pricing
 
@@ -40,7 +41,7 @@ The complete canonical algorithm is documented in `docs/protocol/ALGORITHMS.md`.
 
 ## Settlement
 
-Settlement reads the final BTC price from HyperCore through CoreRead. `Up` wins when final price is greater than the round base price, `Down` wins when it is lower, and an exact tie is a draw.
+Settlement reads the final BTC price from HyperCore through CoreRead. `Up` wins when final price is greater than the round base price, `Down` wins when it is lower, and an exact tie is a draw. If the winning side has no shares, the round is no-contest and all original stake is refunded.
 
 Non-draw rounds charge the protocol fee only from the losing pool. Winners split the winner pool plus the loser pool after fee by winning-share ownership. Draw rounds refund original stake and charge no fee.
 
@@ -60,6 +61,8 @@ The constructor stores:
 - `btcSzDecimals`: HyperCore size decimals used to normalize the raw oracle price.
 
 The current fallback boundary remains documented as `CoreReadAttestor`, but V1 does not implement off-chain attestor submission.
+
+CoreRead, fee recipient, fee, timing, and pricing parameters are snapshotted when a round starts. Admin updates apply to the next round.
 
 ## Verification
 

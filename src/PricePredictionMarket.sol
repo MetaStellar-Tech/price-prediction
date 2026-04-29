@@ -27,7 +27,8 @@ contract PricePredictionMarket {
         None,
         Up,
         Down,
-        Draw
+        Draw,
+        NoContest
     }
 
     struct PricingConfig {
@@ -79,9 +80,18 @@ contract PricePredictionMarket {
     PricingConfig public pricingConfig;
 
     mapping(uint256 roundId => Round) public rounds;
+    mapping(uint256 roundId => PricingConfig) public roundPricingConfigs;
+    mapping(uint256 roundId => uint256) public roundFeeBps;
+    mapping(uint256 roundId => address) public roundFeeRecipients;
+    mapping(uint256 roundId => uint256) public roundDurations;
+    mapping(uint256 roundId => uint32) public roundBtcPerpIndexes;
+    mapping(uint256 roundId => uint8) public roundBtcSzDecimals;
     mapping(uint256 roundId => address[]) private _participants;
     mapping(uint256 roundId => mapping(address account => bool)) private _isParticipant;
     mapping(uint256 roundId => mapping(address account => Position)) public positions;
+    mapping(address account => uint256) public pendingPayouts;
+
+    bool private _entered;
 
     error Unauthorized();
     error InvalidAddress();
@@ -93,6 +103,7 @@ contract PricePredictionMarket {
     error SettleTooEarly();
     error SlippageExceeded();
     error NoParticipantsToCleanup();
+    error Reentrancy();
 
     event AdminUpdated(address indexed oldAdmin, address indexed newAdmin);
     event OperatorUpdated(address indexed oldOperator, address indexed newOperator);
@@ -117,6 +128,8 @@ contract PricePredictionMarket {
     event CleanupPayout(
         uint256 indexed roundId, address indexed user, uint256 amount, bool isWinner
     );
+    event PayoutEscrowed(uint256 indexed roundId, address indexed account, uint256 amount);
+    event PendingPayoutClaimed(address indexed account, uint256 amount);
     event CleanupCompleted(uint256 indexed roundId, uint256 feeAmount);
 
     modifier onlyAdmin() {
@@ -127,6 +140,13 @@ contract PricePredictionMarket {
     modifier onlyOperator() {
         if (msg.sender != operator) revert Unauthorized();
         _;
+    }
+
+    modifier nonReentrant() {
+        if (_entered) revert Reentrancy();
+        _entered = true;
+        _;
+        _entered = false;
     }
 
     constructor(
@@ -168,7 +188,7 @@ contract PricePredictionMarket {
     }
 
     function latestBtcPriceE8() public view returns (uint256) {
-        return HyperliquidCoreRead.readPerpOraclePriceE8(btcPerpIndex, btcSzDecimals);
+        return _readBtcPriceE8(btcPerpIndex, btcSzDecimals);
     }
 
     function startRound() external onlyOperator returns (uint256 roundId) {
@@ -176,7 +196,9 @@ contract PricePredictionMarket {
             revert InvalidState();
         }
 
-        uint256 basePriceE8 = latestBtcPriceE8();
+        uint32 btcPerpIndexSnapshot = btcPerpIndex;
+        uint8 btcSzDecimalsSnapshot = btcSzDecimals;
+        uint256 basePriceE8 = _readBtcPriceE8(btcPerpIndexSnapshot, btcSzDecimalsSnapshot);
         roundId = currentRoundId + 1;
         currentRoundId = roundId;
 
@@ -186,12 +208,19 @@ contract PricePredictionMarket {
         round.stopBetTime = block.timestamp + stopBetOffset;
         round.settleTime = block.timestamp + roundDuration;
         round.basePriceE8 = basePriceE8;
+        roundPricingConfigs[roundId] = pricingConfig;
+        roundFeeBps[roundId] = feeBps;
+        roundFeeRecipients[roundId] = feeRecipient;
+        roundDurations[roundId] = roundDuration;
+        roundBtcPerpIndexes[roundId] = btcPerpIndexSnapshot;
+        roundBtcSzDecimals[roundId] = btcSzDecimalsSnapshot;
 
         emit RoundStarted(roundId, block.timestamp, basePriceE8);
     }
 
     function bet(Direction direction, uint256 amount, uint256 minSharesOut)
         external
+        nonReentrant
         returns (uint256 shares)
     {
         if (amount == 0) revert InvalidAmount();
@@ -201,12 +230,18 @@ contract PricePredictionMarket {
         if (round.state != RoundState.Betting) revert InvalidState();
         if (block.timestamp >= round.stopBetTime) revert BetWindowClosed();
 
-        uint256 currentPriceE8 = latestBtcPriceE8();
+        uint256 balanceBefore = stakeToken.balanceOf(address(this));
+        stakeToken.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = stakeToken.balanceOf(address(this)) - balanceBefore;
+        if (received == 0) revert InvalidAmount();
+
+        uint256 currentPriceE8 =
+            _readBtcPriceE8(roundBtcPerpIndexes[roundId], roundBtcSzDecimals[roundId]);
         uint256 beforePrice = quoteSharePriceBps(roundId, direction, currentPriceE8, 0);
-        uint256 afterPrice = quoteSharePriceBps(roundId, direction, currentPriceE8, amount);
+        uint256 afterPrice = quoteSharePriceBps(roundId, direction, currentPriceE8, received);
         uint256 averagePrice = (beforePrice + afterPrice) / 2;
 
-        shares = (amount * BPS) / averagePrice;
+        shares = (received * BPS) / averagePrice;
         if (shares < minSharesOut) revert SlippageExceeded();
 
         if (!_isParticipant[roundId][msg.sender]) {
@@ -216,23 +251,21 @@ contract PricePredictionMarket {
 
         Position storage position = positions[roundId][msg.sender];
         if (direction == Direction.Up) {
-            round.upPool += amount;
+            round.upPool += received;
             round.upShares += shares;
-            position.upStake += amount;
+            position.upStake += received;
             position.upShares += shares;
         } else {
-            round.downPool += amount;
+            round.downPool += received;
             round.downShares += shares;
-            position.downStake += amount;
+            position.downStake += received;
             position.downShares += shares;
         }
 
-        stakeToken.safeTransferFrom(msg.sender, address(this), amount);
-
-        emit BetPlaced(roundId, msg.sender, direction, amount, shares, averagePrice);
+        emit BetPlaced(roundId, msg.sender, direction, received, shares, averagePrice);
     }
 
-    function stopBet() external onlyOperator {
+    function stopBet() external onlyOperator nonReentrant {
         Round storage round = rounds[currentRoundId];
         if (round.state != RoundState.Betting) revert InvalidState();
         if (block.timestamp < round.stopBetTime) revert StopBetTooEarly();
@@ -241,21 +274,34 @@ contract PricePredictionMarket {
         emit BettingStopped(currentRoundId, block.timestamp);
     }
 
-    function settle() external onlyOperator {
+    function settle() external nonReentrant {
         uint256 roundId = currentRoundId;
         Round storage round = rounds[roundId];
-        if (round.state != RoundState.BettingClosed) revert InvalidState();
+        if (round.state != RoundState.Betting && round.state != RoundState.BettingClosed) {
+            revert InvalidState();
+        }
         if (block.timestamp < round.settleTime) revert SettleTooEarly();
 
-        uint256 finalPriceE8 = latestBtcPriceE8();
+        uint256 finalPriceE8 =
+            _readBtcPriceE8(roundBtcPerpIndexes[roundId], roundBtcSzDecimals[roundId]);
         round.finalPriceE8 = finalPriceE8;
 
         if (finalPriceE8 > round.basePriceE8) {
-            round.outcome = Outcome.Up;
-            round.feeAmount = (round.downPool * feeBps) / BPS;
+            if (round.upShares == 0) {
+                round.outcome = Outcome.NoContest;
+                round.feeAmount = 0;
+            } else {
+                round.outcome = Outcome.Up;
+                round.feeAmount = (round.downPool * roundFeeBps[roundId]) / BPS;
+            }
         } else if (finalPriceE8 < round.basePriceE8) {
-            round.outcome = Outcome.Down;
-            round.feeAmount = (round.upPool * feeBps) / BPS;
+            if (round.downShares == 0) {
+                round.outcome = Outcome.NoContest;
+                round.feeAmount = 0;
+            } else {
+                round.outcome = Outcome.Down;
+                round.feeAmount = (round.upPool * roundFeeBps[roundId]) / BPS;
+            }
         } else {
             round.outcome = Outcome.Draw;
             round.feeAmount = 0;
@@ -265,7 +311,7 @@ contract PricePredictionMarket {
         emit RoundSettled(roundId, round.outcome, finalPriceE8, round.feeAmount);
     }
 
-    function cleanup(uint256 roundId, uint256 maxCount) external {
+    function cleanup(uint256 roundId, uint256 maxCount) external nonReentrant {
         if (maxCount == 0) revert InvalidAmount();
 
         Round storage round = rounds[roundId];
@@ -284,20 +330,28 @@ contract PricePredictionMarket {
         while (index < end) {
             address user = _participants[roundId][index];
             (uint256 payout, bool isWinner) = _payoutFor(roundId, user);
-            if (payout != 0) {
-                stakeToken.safeTransfer(user, payout);
-            }
-            emit CleanupPayout(roundId, user, payout, isWinner);
             unchecked {
                 ++index;
             }
+            round.cleanupIndex = index;
+            if (payout != 0) {
+                _transferOrEscrow(roundId, user, payout);
+            }
+            emit CleanupPayout(roundId, user, payout, isWinner);
         }
-
-        round.cleanupIndex = index;
 
         if (index == count) {
             _completeCleanup(roundId, round);
         }
+    }
+
+    function claimPendingPayout() external nonReentrant returns (uint256 amount) {
+        amount = pendingPayouts[msg.sender];
+        if (amount == 0) revert InvalidAmount();
+
+        pendingPayouts[msg.sender] = 0;
+        stakeToken.safeTransfer(msg.sender, amount);
+        emit PendingPayoutClaimed(msg.sender, amount);
     }
 
     function quoteCurrentSharePriceBps(Direction direction) external view returns (uint256) {
@@ -317,9 +371,9 @@ contract PricePredictionMarket {
         if (round.state == RoundState.None || round.basePriceE8 == 0) revert InvalidState();
         if (currentPriceE8 == 0) revert InvalidParameter();
 
-        PricingConfig memory config = pricingConfig;
+        PricingConfig memory config = roundPricingConfigs[roundId];
         int256 priceBps = int256(config.basePriceBps);
-        priceBps += int256(_timePremiumBps(round, config));
+        priceBps += int256(_timePremiumBps(round, config, roundDurations[roundId]));
         priceBps += _trendAdjustmentBps(round.basePriceE8, currentPriceE8, direction, config);
         priceBps += _poolImbalanceAdjustmentBps(round, direction, addedAmount, config);
 
@@ -343,7 +397,8 @@ contract PricePredictionMarket {
         Round storage round = rounds[roundId];
         if (round.state != RoundState.Betting) revert InvalidState();
 
-        uint256 currentPriceE8 = latestBtcPriceE8();
+        uint256 currentPriceE8 =
+            _readBtcPriceE8(roundBtcPerpIndexes[roundId], roundBtcSzDecimals[roundId]);
         beforePriceBps = quoteSharePriceBps(roundId, direction, currentPriceE8, 0);
         afterPriceBps = quoteSharePriceBps(roundId, direction, currentPriceE8, amount);
         averagePriceBps = (beforePriceBps + afterPriceBps) / 2;
@@ -407,14 +462,18 @@ contract PricePredictionMarket {
         if (config.maxSharePriceBps > 100_000) revert InvalidParameter();
     }
 
-    function _timePremiumBps(Round storage round, PricingConfig memory config)
+    function _readBtcPriceE8(uint32 perpIndex, uint8 szDecimals) private view returns (uint256) {
+        return HyperliquidCoreRead.readPerpOraclePriceE8(perpIndex, szDecimals);
+    }
+
+    function _timePremiumBps(Round storage round, PricingConfig memory config, uint256 duration)
         private
         view
         returns (uint256)
     {
         uint256 elapsed = block.timestamp > round.startTime ? block.timestamp - round.startTime : 0;
-        if (elapsed > roundDuration) elapsed = roundDuration;
-        return (config.maxTimePremiumBps * elapsed) / roundDuration;
+        if (elapsed > duration) elapsed = duration;
+        return (config.maxTimePremiumBps * elapsed) / duration;
     }
 
     function _trendAdjustmentBps(
@@ -470,7 +529,7 @@ contract PricePredictionMarket {
         Round storage round = rounds[roundId];
         Position storage position = positions[roundId][user];
 
-        if (round.outcome == Outcome.Draw) {
+        if (round.outcome == Outcome.Draw || round.outcome == Outcome.NoContest) {
             payout = position.upStake + position.downStake;
             return (payout, payout != 0);
         }
@@ -494,9 +553,23 @@ contract PricePredictionMarket {
         round.feeTransferred = true;
         uint256 feeAmount = round.feeAmount;
         if (feeAmount != 0) {
-            stakeToken.safeTransfer(feeRecipient, feeAmount);
+            _transferOrEscrow(roundId, roundFeeRecipients[roundId], feeAmount);
         }
         round.state = RoundState.Cleaned;
         emit CleanupCompleted(roundId, feeAmount);
+    }
+
+    function _transferOrEscrow(uint256 roundId, address account, uint256 amount) private {
+        if (_tryTransfer(account, amount)) return;
+
+        pendingPayouts[account] += amount;
+        emit PayoutEscrowed(roundId, account, amount);
+    }
+
+    function _tryTransfer(address to, uint256 amount) private returns (bool) {
+        (bool success, bytes memory returndata) =
+            address(stakeToken).call(abi.encodeCall(stakeToken.transfer, (to, amount)));
+        if (!success) return false;
+        return returndata.length == 0 || abi.decode(returndata, (bool));
     }
 }

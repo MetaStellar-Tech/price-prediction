@@ -2,14 +2,17 @@
 
 ## Non-Negotiable Invariants
 
-- Only `operator` may start, stop, and settle rounds.
+- Only `operator` may start and stop rounds.
 - Only `admin` may update roles and protocol parameters.
 - A new round cannot start until the previous round is fully cleaned.
 - Bets are accepted only during `Betting` and before `stopBetTime`.
+- Settlement is permissionless after `settleTime`.
 - Settlement reads final BTC price once and stores the result.
 - Fees are charged only from the losing pool.
 - Draws refund original stake and charge no fee.
+- No-contest rounds refund original stake and charge no fee.
 - Cleanup is monotonic by participant index and cannot double-pay processed accounts.
+- Failed cleanup transfers are escrowed in `pendingPayouts` instead of blocking the round.
 
 ## Funds Model
 
@@ -32,6 +35,13 @@ userPayout = userUpStake + userDownStake
 fee = 0
 ```
 
+No-contest payout:
+
+```text
+userPayout = userUpStake + userDownStake
+fee = 0
+```
+
 Integer rounding can leave residual dust in the contract. V1 does not expose an admin sweep function to avoid weakening payout safety.
 
 ## Parameter Bounds
@@ -40,9 +50,10 @@ Integer rounding can leave residual dust in the contract. V1 does not expose an 
 - `stopBetOffset` must be lower than `roundDuration`.
 - Share prices are clamped by configured min and max bps.
 - BTC `szDecimals` must be at most `18`.
+- Round-sensitive config, including `feeRecipient`, is snapshotted at round start. Admin updates apply to later rounds.
 
 ## Known V1 Limits
 
-- Push cleanup reverts a batch if any ERC20 transfer fails.
+- `claimPendingPayout` can still fail while the account remains blocked by the stake token.
 - Simulation tests are adversarial validation, not a formal no-arbitrage proof.
 - `CoreReadAttestor` fallback is documented but not implemented in V1.

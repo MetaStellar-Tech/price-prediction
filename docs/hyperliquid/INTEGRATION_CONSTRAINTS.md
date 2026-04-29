@@ -21,6 +21,8 @@ priceE8 = price * 1e8
 
 The contract stores `btcPerpIndex` and `btcSzDecimals` as admin-configurable values because asset indices and metadata can differ by network or deployment assumptions.
 
+These values are snapshotted at `startRound`. Admin updates apply only to future rounds, so base and final settlement prices for a given round use the same CoreRead configuration.
+
 ## Fallback Policy
 
 The repository policy is:

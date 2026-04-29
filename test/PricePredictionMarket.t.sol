@@ -61,7 +61,7 @@ contract PricePredictionMarketTest is Test {
         assertEq(basePriceE8, 100_000e8);
     }
 
-    function testOnlyOperatorCanStartStopAndSettle() public {
+    function testOnlyOperatorCanStartAndStopButAnyoneCanSettleAfterDeadline() public {
         _mockPrice(100_000e8);
 
         vm.expectRevert(PricePredictionMarket.Unauthorized.selector);
@@ -79,8 +79,30 @@ contract PricePredictionMarketTest is Test {
 
         _warpToElapsed(1, 60);
         _mockPrice(100_100e8);
-        vm.expectRevert(PricePredictionMarket.Unauthorized.selector);
+        vm.prank(alice);
         market.settle();
+
+        (PricePredictionMarket.RoundState state, PricePredictionMarket.Outcome outcome,,,,,,,,,,,,)
+        = market.rounds(1);
+        assertEq(uint256(state), uint256(PricePredictionMarket.RoundState.Settled));
+        assertEq(uint256(outcome), uint256(PricePredictionMarket.Outcome.NoContest));
+    }
+
+    function testAnyoneCanSettleFromBettingAfterDeadline() public {
+        _startAtPrice(100_000e8);
+        _mockPrice(100_000e8);
+        _bet(alice, PricePredictionMarket.Direction.Up, 10e6, 0);
+        _bet(bob, PricePredictionMarket.Direction.Down, 10e6, 0);
+
+        _warpToElapsed(1, 60);
+        _mockPrice(100_100e8);
+        vm.prank(carol);
+        market.settle();
+
+        (PricePredictionMarket.RoundState state, PricePredictionMarket.Outcome outcome,,,,,,,,,,,,)
+        = market.rounds(1);
+        assertEq(uint256(state), uint256(PricePredictionMarket.RoundState.Settled));
+        assertEq(uint256(outcome), uint256(PricePredictionMarket.Outcome.Up));
     }
 
     function testAdminUpdatesParameters() public {
@@ -140,6 +162,55 @@ contract PricePredictionMarketTest is Test {
         assertGt(largeAverage, smallAverage);
         assertLt(largeShares, (500e6 * 10_000) / smallAverage);
         assertApproxEqAbs(smallAverage, 8_547, 1);
+    }
+
+    function testConfigUpdatesApplyOnlyToNextRound() public {
+        _startAtPrice(100_000e8);
+        _mockPrice(100_000e8);
+        _bet(alice, PricePredictionMarket.Direction.Up, 100e6, 0);
+        _bet(bob, PricePredictionMarket.Direction.Down, 100e6, 0);
+
+        PricePredictionMarket.PricingConfig memory config = PricePredictionMarket.PricingConfig({
+            basePriceBps: 20_000,
+            maxTimePremiumBps: 1_000,
+            maxTrendAdjustmentBps: 1_000,
+            trendMoveCapBps: 500,
+            maxPoolImbalanceAdjustmentBps: 1_000,
+            minSharePriceBps: 10_000,
+            maxSharePriceBps: 40_000
+        });
+        vm.startPrank(admin);
+        market.setCoreReadConfig(1, 4);
+        market.setFeeRecipient(carol);
+        market.setFeeBps(2_000);
+        market.setPricingConfig(config);
+        vm.stopPrank();
+
+        uint256 activeRoundPrice =
+            market.quoteSharePriceBps(1, PricePredictionMarket.Direction.Up, 100_000e8, 0);
+        assertEq(activeRoundPrice, 10_000);
+
+        _warpToElapsed(1, 50);
+        vm.prank(operator);
+        market.stopBet();
+
+        _mockPriceForIndex(0, 5, 101_000e8);
+        _mockPriceForIndex(1, 4, 99_000e8);
+        _warpToElapsed(1, 60);
+        market.settle();
+        market.cleanup(1, 10);
+
+        assertEq(token.balanceOf(feeRecipient), 5e6);
+        assertEq(token.balanceOf(carol), 10_000e6);
+
+        _mockPriceForIndex(1, 4, 100_000e8);
+        vm.prank(operator);
+        market.startRound();
+        assertEq(market.roundBtcPerpIndexes(2), 1);
+        assertEq(market.roundBtcSzDecimals(2), 4);
+        uint256 nextRoundPrice =
+            market.quoteSharePriceBps(2, PricePredictionMarket.Direction.Up, 100_000e8, 0);
+        assertEq(nextRoundPrice, 20_000);
     }
 
     function testMinSharesOutProtectsUser() public {
@@ -243,6 +314,62 @@ contract PricePredictionMarketTest is Test {
         assertEq(token.balanceOf(bob), bobBefore);
     }
 
+    function testNoWinnerNoContestRefundsAllStake() public {
+        _startAtPrice(100_000e8);
+        _mockPrice(100_000e8);
+        uint256 aliceBefore = token.balanceOf(alice);
+        _bet(alice, PricePredictionMarket.Direction.Up, 100e6, 0);
+
+        _warpToElapsed(1, 60);
+        _mockPrice(99_000e8);
+        market.settle();
+        market.cleanup(1, 10);
+
+        (PricePredictionMarket.RoundState state, PricePredictionMarket.Outcome outcome,,,,,,,,,,,,)
+        = market.rounds(1);
+        assertEq(uint256(state), uint256(PricePredictionMarket.RoundState.Cleaned));
+        assertEq(uint256(outcome), uint256(PricePredictionMarket.Outcome.NoContest));
+        assertEq(token.balanceOf(alice), aliceBefore);
+        assertEq(token.balanceOf(feeRecipient), 0);
+    }
+
+    function testFeeOnTransferBetAccountingUsesReceivedAmount() public {
+        token.setTransferFeeBps(1_000);
+        _startAtPrice(100_000e8);
+        _mockPrice(100_000e8);
+
+        _bet(alice, PricePredictionMarket.Direction.Up, 100e6, 0);
+
+        (,,,,,,, uint256 upPool,, uint256 upShares,,,,) = market.rounds(1);
+        assertEq(upPool, 90e6);
+        assertEq(upShares, 69_230_769);
+        assertEq(token.balanceOf(address(market)), 90e6);
+    }
+
+    function testCleanupTransferFailureEscrowsPayoutAndDoesNotBlockRound() public {
+        _startAtPrice(100_000e8);
+        _mockPrice(100_000e8);
+        _bet(alice, PricePredictionMarket.Direction.Up, 100e6, 0);
+        _bet(bob, PricePredictionMarket.Direction.Down, 100e6, 0);
+
+        _warpToElapsed(1, 60);
+        _mockPrice(101_000e8);
+        market.settle();
+
+        token.setBlockedRecipient(alice, true);
+        market.cleanup(1, 10);
+
+        (PricePredictionMarket.RoundState state,,,,,,,,,,,,,) = market.rounds(1);
+        assertEq(uint256(state), uint256(PricePredictionMarket.RoundState.Cleaned));
+        assertGt(market.pendingPayouts(alice), 0);
+
+        token.setBlockedRecipient(alice, false);
+        vm.prank(alice);
+        market.claimPendingPayout();
+
+        assertEq(market.pendingPayouts(alice), 0);
+    }
+
     function testClampBounds() public {
         _startAtPrice(100_000e8);
         _warpToElapsed(1, 49);
@@ -314,8 +441,12 @@ contract PricePredictionMarketTest is Test {
     }
 
     function _mockPrice(uint256 priceE8) private {
-        uint256 rawPrice = (priceE8 * (10 ** (6 - BTC_SZ_DECIMALS))) / 1e8;
-        vm.mockCall(CORE_READ, abi.encode(uint256(BTC_PERP_INDEX)), abi.encode(rawPrice));
+        _mockPriceForIndex(BTC_PERP_INDEX, BTC_SZ_DECIMALS, priceE8);
+    }
+
+    function _mockPriceForIndex(uint32 perpIndex, uint8 szDecimals, uint256 priceE8) private {
+        uint256 rawPrice = (priceE8 * (10 ** (6 - szDecimals))) / 1e8;
+        vm.mockCall(CORE_READ, abi.encode(uint256(perpIndex)), abi.encode(rawPrice));
     }
 
     function _arbPotentialPayouts(uint256 roundId)

@@ -11,6 +11,8 @@ contract MockERC20 is IERC20 {
     uint256 public override totalSupply;
     mapping(address account => uint256) public override balanceOf;
     mapping(address owner => mapping(address spender => uint256)) public override allowance;
+    mapping(address account => bool) public blockedRecipient;
+    uint256 public transferFeeBps;
 
     constructor(string memory name_, string memory symbol_, uint8 decimals_) {
         name = name_;
@@ -21,6 +23,15 @@ contract MockERC20 is IERC20 {
     function mint(address to, uint256 amount) external {
         totalSupply += amount;
         balanceOf[to] += amount;
+    }
+
+    function setBlockedRecipient(address account, bool blocked) external {
+        blockedRecipient[account] = blocked;
+    }
+
+    function setTransferFeeBps(uint256 feeBps) external {
+        require(feeBps <= 1_000, "fee too high");
+        transferFeeBps = feeBps;
     }
 
     function approve(address spender, uint256 amount) external override returns (bool) {
@@ -47,9 +58,13 @@ contract MockERC20 is IERC20 {
 
     function _transfer(address from, address to, uint256 amount) private {
         require(to != address(0), "ERC20: transfer to zero");
+        require(!blockedRecipient[to], "ERC20: recipient blocked");
         uint256 currentBalance = balanceOf[from];
         require(currentBalance >= amount, "ERC20: insufficient balance");
         balanceOf[from] = currentBalance - amount;
-        balanceOf[to] += amount;
+        uint256 fee = (amount * transferFeeBps) / 10_000;
+        uint256 received = amount - fee;
+        totalSupply -= fee;
+        balanceOf[to] += received;
     }
 }

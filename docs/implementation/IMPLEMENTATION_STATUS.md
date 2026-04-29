@@ -11,7 +11,11 @@ Last updated: 2026-04-29
 - [x] Dynamic share pricing implemented with time premium, trend adjustment, pool imbalance, clamps, and average execution slippage.
 - [x] `minSharesOut` protection implemented.
 - [x] Settlement implemented for Up win, Down win, and draw.
+- [x] No-contest settlement implemented for empty winning-side rounds with full stake refund.
 - [x] Push-based batched cleanup implemented.
+- [x] Failed cleanup transfers escrow to `pendingPayouts` and can be claimed later.
+- [x] Round-sensitive configs, including fee recipient, snapshot at round start.
+- [x] Settlement is permissionless after deadline.
 - [x] Deterministic unit tests implemented.
 - [x] Simulation test implemented to search sampled two-sided lock-profit combinations.
 - [x] Canonical protocol algorithm documentation added for share pricing, settlement, and payout math.
