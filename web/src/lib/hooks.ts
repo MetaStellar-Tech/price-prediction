@@ -382,13 +382,15 @@ export function useHyperliquidExchange() {
     };
   }, [address]);
 
-  async function spotSendToHyperEvm(coin: "HYPE" | "USDC", amount: string): Promise<unknown> {
+  async function sendAssetToHyperEvm(coin: "HYPE" | "USDC", amount: string): Promise<unknown> {
     if (!masterExchange) throw new Error("Connect a wallet before preparing a Core transfer.");
     const client = await masterExchange();
     const destination = hyperEvmSystemAddressForSpotToken(spotMeta.data, coin);
     if (!destination) throw new Error(`Unable to derive ${coin} HyperEVM system address.`);
-    return client.spotSend({
+    return client.sendAsset({
       destination,
+      sourceDex: "spot",
+      destinationDex: "spot",
       token: spotTokenIdentifier(spotMeta.data, coin),
       amount,
     });
@@ -425,7 +427,7 @@ export function useHyperliquidExchange() {
 
   return {
     buyHypeWithUsdc,
-    spotSendToHyperEvm,
+    sendAssetToHyperEvm,
     disabledReason: !isConnected
       ? "Connect wallet first"
       : spotMeta.isLoading

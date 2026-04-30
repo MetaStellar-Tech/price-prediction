@@ -56,10 +56,10 @@ export function RechargePanel() {
         await exchange.buyHypeWithUsdc(HYPE_TOP_UP_USDC, hypeMid);
         setStatus("HYPE buy order submitted. Confirm fill before sending HYPE to EVM.");
       } else if (needsHype) {
-        await exchange.spotSendToHyperEvm("HYPE", estimatedHypeAmount);
+        await exchange.sendAssetToHyperEvm("HYPE", estimatedHypeAmount);
         setStatus("HYPE Core-to-EVM transfer submitted.");
       } else {
-        await exchange.spotSendToHyperEvm("USDC", usdcAmount);
+        await exchange.sendAssetToHyperEvm("USDC", usdcAmount);
         setStatus("USDC Core-to-EVM transfer submitted.");
       }
     } catch (error) {

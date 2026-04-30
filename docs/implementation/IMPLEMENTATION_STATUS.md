@@ -42,6 +42,8 @@ Last updated: 2026-04-30
   wallet adapter that signs typed data with the provider's current `eth_chainId` through
   `eth_signTypedData_v4`, avoiding the SDK's viem branch and MetaMask SDK active-chain/domain-chain
   mismatches.
+- [x] Frontend Core-to-HyperEVM linked-token transfers use Hyperliquid `sendAsset` instead of
+  legacy `spotSend`, so USDC/HYPE recharge supports wallets with `unifiedAccount` enabled.
 
 ## Verification
 

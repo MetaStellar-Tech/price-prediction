@@ -54,5 +54,7 @@ npm run build
   connected wallet to approve that agent, and then signs the L1 order locally with the agent key.
 - Contract writes are submitted through the connected EVM wallet.
 - Hyperliquid Core recharge actions are shown as explicit action previews before submission.
+  Core-to-HyperEVM linked-token transfers use Hyperliquid `sendAsset`, not legacy `spotSend`, so
+  they work for unified-account wallets.
 - Users should review every wallet signature and exchange action, especially HYPE spot purchases
   and Core-to-EVM transfers.

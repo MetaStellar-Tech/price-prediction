@@ -147,7 +147,7 @@ export type RechargeAction =
       status: RechargeStepStatus;
     }
   | {
-      kind: "spot-send";
+      kind: "send-asset";
       title: "Transfer asset to HyperEVM";
       description: string;
       actionPreview: Record<string, unknown>;
@@ -178,12 +178,14 @@ export function buildHypeTopUpPlan(hypeMid: number | undefined): RechargeAction[
       status: "ready",
     },
     {
-      kind: "spot-send",
+      kind: "send-asset",
       title: "Transfer asset to HyperEVM",
       description: `Send HYPE from HyperCore spot to the HyperEVM system address ${HYPE_SYSTEM_ADDRESS}.`,
       actionPreview: {
-        type: "spotSend",
+        type: "sendAsset",
         token: "HYPE",
+        sourceDex: "spot",
+        destinationDex: "spot",
         destination: HYPE_SYSTEM_ADDRESS,
         amount: buySize ? buySize.toFixed(5) : "bought HYPE amount",
       },
@@ -195,12 +197,14 @@ export function buildHypeTopUpPlan(hypeMid: number | undefined): RechargeAction[
 export function buildUsdcBridgePlan(amount: string): RechargeAction[] {
   return [
     {
-      kind: "spot-send",
+      kind: "send-asset",
       title: "Transfer asset to HyperEVM",
       description: "Send Core USDC to the HyperEVM linked system route for the connected wallet.",
       actionPreview: {
-        type: "spotSend",
+        type: "sendAsset",
         token: "USDC",
+        sourceDex: "spot",
+        destinationDex: "spot",
         destination: "USDC HyperEVM system address from Hyperliquid token metadata",
         amount: amount || "0",
       },
