@@ -2,7 +2,14 @@ import { useMemo, useState } from "react";
 import { ArrowRightLeft, Check, ExternalLink, Fuel, Send } from "lucide-react";
 import { formatUnits } from "viem";
 import { HYPE_GAS_RESERVE, HYPE_TOP_UP_USDC } from "../lib/config";
-import { buildHypeTopUpPlan, buildUsdcBridgePlan, coreBalance, spotMidPrice } from "../lib/hyperliquid";
+import {
+  buildHypeTopUpPlan,
+  buildUsdcBridgePlan,
+  coreBalance,
+  formatSpotSizeFloor,
+  spotMidPrice,
+  spotTokenSizeDecimals,
+} from "../lib/hyperliquid";
 import { useAccountState, useHyperliquidExchange, useMids, useSpotMeta } from "../lib/hooks";
 import { formatNumber } from "../lib/format";
 
@@ -35,11 +42,15 @@ export function RechargePanel() {
   const evmHype = Number(formatUnits(account.hypeBalance ?? 0n, 18));
   const needsHype = account.isConnected && evmHype < HYPE_GAS_RESERVE;
   const hypeMid = spotMidPrice(spotMeta.data, mids.data, "HYPE", "USDC");
+  const hypeSzDecimals = spotTokenSizeDecimals(spotMeta.data, "HYPE");
   const exchange = useHyperliquidExchange();
-  const estimatedHypeAmount = hypeMid && hypeMid > 0 ? (HYPE_TOP_UP_USDC / (hypeMid * 1.03)).toFixed(5) : "";
+  const estimatedHypeAmount =
+    hypeMid && hypeMid > 0 && hypeSzDecimals !== undefined
+      ? (formatSpotSizeFloor(HYPE_TOP_UP_USDC / (hypeMid * 1.03), hypeSzDecimals) ?? "")
+      : "";
   const plan = useMemo(
-    () => (needsHype ? buildHypeTopUpPlan(hypeMid) : buildUsdcBridgePlan(usdcAmount)),
-    [hypeMid, needsHype, usdcAmount],
+    () => (needsHype ? buildHypeTopUpPlan(hypeMid, hypeSzDecimals) : buildUsdcBridgePlan(usdcAmount)),
+    [hypeMid, hypeSzDecimals, needsHype, usdcAmount],
   );
   const coreUsdc = coreBalance(account.coreBalances, "USDC")?.available ?? 0;
   const signDisabled = Boolean(exchange.disabledReason);
@@ -49,7 +60,7 @@ export function RechargePanel() {
       setSubmittedStep(kind);
       setStatus(
         needsHype && index === 0
-          ? "First-time buys approve a local Hyperliquid API wallet, then the order is signed locally."
+          ? "Approving or rotating a local Hyperliquid API wallet, then signing the order locally."
           : "Waiting for wallet signature.",
       );
       if (needsHype && index === 0) {

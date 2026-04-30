@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExchangeClient, HttpTransport } from "@nktkas/hyperliquid";
 import type { AbstractWallet } from "@nktkas/hyperliquid/signing";
+import { formatPrice } from "@nktkas/hyperliquid/utils";
 import {
   parseUnits,
   type Address,
@@ -24,11 +25,14 @@ import { erc20Abi, marketAbi } from "./abi";
 import { config } from "./config";
 import {
   getAllMids,
+  getExtraAgents,
   getSpotBalances,
   getSpotMeta,
   getUserAbstraction,
+  formatSpotSizeFloor,
   hyperEvmSystemAddressForSpotToken,
   spotTokenIdentifier,
+  spotTokenSizeDecimals,
   spotUniverseAsset,
 } from "./hyperliquid";
 
@@ -54,6 +58,8 @@ type Eip1193Provider = {
 
 const HYPERLIQUID_AGENT_KEY_PREFIX = "price-prediction:hyperliquid-agent:";
 const HYPERLIQUID_AGENT_NAME = "PricePredict";
+const HYPERLIQUID_AGENT_VALID_UNTIL_SKEW_MS = 60_000;
+const HYPERLIQUID_AGENT_VALID_FOR_MS = 90 * 24 * 60 * 60 * 1000;
 
 function exchangeApiBaseUrl() {
   return config.hyperliquidExchangeUrl.replace(/\/exchange\/?$/, "");
@@ -399,24 +405,36 @@ export function useHyperliquidExchange() {
   async function buyHypeWithUsdc(usdcAmount: number, hypeMid?: number): Promise<unknown> {
     if (!masterExchange || !agentExchange || !address) throw new Error("Connect a wallet before preparing a spot order.");
     const asset = spotUniverseAsset(spotMeta.data, "HYPE", "USDC");
+    const hypeSzDecimals = spotTokenSizeDecimals(spotMeta.data, "HYPE");
     if (asset === undefined) throw new Error("Unable to derive HYPE/USDC spot asset id.");
+    if (hypeSzDecimals === undefined) throw new Error("Unable to derive HYPE spot size decimals.");
     if (!hypeMid || hypeMid <= 0) throw new Error("HYPE mid price is unavailable.");
     const agent = privateKeyToAccount(getOrCreateAgentPrivateKey(address));
-    const masterClient = await masterExchange();
-    await masterClient.approveAgent({
-      agentAddress: agent.address,
-      agentName: HYPERLIQUID_AGENT_NAME,
-    });
+    const extraAgents = await getExtraAgents(address);
+    const reusableAgent = extraAgents.find(
+      (item) =>
+        item.address.toLowerCase() === agent.address.toLowerCase() &&
+        item.validUntil > Date.now() + HYPERLIQUID_AGENT_VALID_UNTIL_SKEW_MS,
+    );
+    if (!reusableAgent) {
+      const masterClient = await masterExchange();
+      await masterClient.approveAgent({
+        agentAddress: agent.address,
+        agentName: `${HYPERLIQUID_AGENT_NAME} valid_until ${Date.now() + HYPERLIQUID_AGENT_VALID_FOR_MS}`,
+      });
+    }
     const client = agentExchange();
     const protectedPrice = hypeMid * 1.03;
-    const size = usdcAmount / protectedPrice;
+    const price = formatPrice(protectedPrice, hypeSzDecimals, "spot");
+    const size = formatSpotSizeFloor(usdcAmount / protectedPrice, hypeSzDecimals);
+    if (!size) throw new Error("HYPE order size is below the minimum supported precision.");
     return client.order({
       orders: [
         {
           a: asset,
           b: true,
-          p: protectedPrice.toFixed(4),
-          s: size.toFixed(5),
+          p: price,
+          s: size,
           r: false,
           t: { limit: { tif: "Ioc" } },
         },

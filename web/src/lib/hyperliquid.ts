@@ -1,4 +1,5 @@
 import type { Address } from "viem";
+import { formatSize } from "@nktkas/hyperliquid/utils";
 import { config, HYPE_SYSTEM_ADDRESS } from "./config";
 
 export type CoreBalance = {
@@ -19,6 +20,12 @@ type SpotClearinghouseState = {
 };
 
 type AllMids = Record<string, string>;
+
+export type ExtraAgent = {
+  name: string;
+  address: Address;
+  validUntil: number;
+};
 
 type SpotMeta = {
   universe: {
@@ -87,6 +94,14 @@ export async function getUserAbstraction(address?: Address): Promise<string | nu
   });
 }
 
+export async function getExtraAgents(address?: Address): Promise<ExtraAgent[]> {
+  if (!address) return [];
+  return postHyperliquid<ExtraAgent[]>(config.hyperliquidInfoUrl, {
+    type: "extraAgents",
+    user: address,
+  });
+}
+
 export function coreBalance(balances: CoreBalance[] | undefined, coin: string) {
   return balances?.find((balance) => balance.coin.toUpperCase() === coin.toUpperCase());
 }
@@ -106,6 +121,19 @@ export function spotUniverseAsset(meta: SpotMeta | undefined, baseCoin: string, 
     (item) => item.tokens.includes(base.index) && item.tokens.includes(quote.index),
   );
   return universe ? 10_000 + universe.index : undefined;
+}
+
+export function spotTokenSizeDecimals(meta: SpotMeta | undefined, coin: string) {
+  return meta?.tokens.find((item) => item.name.toUpperCase() === coin.toUpperCase())?.szDecimals;
+}
+
+export function formatSpotSizeFloor(size: number, szDecimals: number) {
+  try {
+    if (!Number.isFinite(size) || size <= 0) return undefined;
+    return formatSize(size, szDecimals);
+  } catch {
+    return undefined;
+  }
 }
 
 export function spotMidPrice(
@@ -154,8 +182,10 @@ export type RechargeAction =
       status: RechargeStepStatus;
     };
 
-export function buildHypeTopUpPlan(hypeMid: number | undefined): RechargeAction[] {
+export function buildHypeTopUpPlan(hypeMid: number | undefined, hypeSzDecimals: number | undefined): RechargeAction[] {
   const buySize = hypeMid && hypeMid > 0 ? 2 / hypeMid : undefined;
+  const formattedBuySize =
+    buySize && hypeSzDecimals !== undefined ? formatSpotSizeFloor(buySize, hypeSzDecimals) : undefined;
   return [
     {
       kind: "buy-hype",
@@ -168,7 +198,7 @@ export function buildHypeTopUpPlan(hypeMid: number | undefined): RechargeAction[
           {
             coin: "HYPE/USDC",
             is_buy: true,
-            sz: buySize ? buySize.toFixed(5) : "quote:2 USDC",
+            sz: formattedBuySize ?? "quote:2 USDC",
             limit_px: "market protected by wallet confirmation",
             order_type: { limit: { tif: "Ioc" } },
             reduce_only: false,
@@ -187,7 +217,7 @@ export function buildHypeTopUpPlan(hypeMid: number | undefined): RechargeAction[
         sourceDex: "spot",
         destinationDex: "spot",
         destination: HYPE_SYSTEM_ADDRESS,
-        amount: buySize ? buySize.toFixed(5) : "bought HYPE amount",
+        amount: formattedBuySize ?? "bought HYPE amount",
       },
       status: "ready",
     },

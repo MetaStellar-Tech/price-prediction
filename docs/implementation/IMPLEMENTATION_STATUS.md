@@ -46,6 +46,12 @@ Last updated: 2026-04-30
   mismatches.
 - [x] Frontend Core-to-HyperEVM linked-token transfers use Hyperliquid `sendAsset` instead of
   legacy `spotSend`, so USDC/HYPE recharge supports wallets with `unifiedAccount` enabled.
+- [x] Frontend HYPE top-up flow checks active Hyperliquid `extraAgents` before `approveAgent`,
+  reuses the browser-local agent when it is already authorized, and rotates the named
+  `PricePredict` agent in-app when the previous browser-local agent was lost.
+- [x] Frontend HYPE top-up orders format spot order price, spot order size, and follow-up
+  Core-to-EVM HYPE transfer amount with Hyperliquid SDK tick/lot-size helpers instead of
+  hard-coding frontend precision.
 
 ## Verification
 
