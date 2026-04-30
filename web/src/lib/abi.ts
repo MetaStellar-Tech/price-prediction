@@ -1,4 +1,9 @@
 export const marketAbi = [
+  { type: "error", name: "BetWindowClosed", inputs: [] },
+  { type: "error", name: "InvalidAmount", inputs: [] },
+  { type: "error", name: "InvalidParameter", inputs: [] },
+  { type: "error", name: "InvalidState", inputs: [] },
+  { type: "error", name: "SlippageExceeded", inputs: [] },
   {
     type: "function",
     name: "BPS",
@@ -185,4 +190,3 @@ export const erc20Abi = [
     outputs: [{ type: "string" }],
   },
 ] as const;
-

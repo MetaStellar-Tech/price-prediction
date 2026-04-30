@@ -55,6 +55,9 @@ Last updated: 2026-04-30
 - [x] Frontend market state refresh cadence tightened: core market reads poll every 2 seconds,
   market bet events every 3 seconds, user bet history every 5 seconds, Hyperliquid mids every 3
   seconds, and visible round countdowns re-render locally every second.
+- [x] Frontend bet flow includes market custom errors in the ABI, disables the bet button outside
+  the active betting window, and maps `InvalidState`, `BetWindowClosed`, `InvalidAmount`, and
+  `SlippageExceeded` failures to user-readable messages.
 
 ## Verification
 

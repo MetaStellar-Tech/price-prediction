@@ -20,6 +20,23 @@ import {
 } from "../lib/format";
 import { MetricCard } from "./MetricCard";
 
+function marketActionErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("InvalidState") || message.includes("0xbaf3f0f7")) {
+    return "Betting is not open for the current round. Wait for the next Betting round.";
+  }
+  if (message.includes("BetWindowClosed") || message.includes("0x2749efd4")) {
+    return "The betting window for this round has closed.";
+  }
+  if (message.includes("InvalidAmount") || message.includes("0x2c5211c6")) {
+    return "Enter a positive bet amount.";
+  }
+  if (message.includes("SlippageExceeded")) {
+    return "Price moved beyond the default slippage. Refresh and try again.";
+  }
+  return message || "Market action failed.";
+}
+
 export function MarketPanel() {
   const account = useAccountState();
   const market = useMarketState(account.address);
@@ -44,6 +61,7 @@ export function MarketPanel() {
     roundState === 1 || roundState === 2
       ? secondsUntil(round?.[4] as bigint | undefined) === 0
       : false;
+  const canBet = account.isConnected && roundState === 1 && secondsUntil(round?.[3] as bigint | undefined) > 0;
   const totalPool = (round?.[7] ?? 0n) + (round?.[8] ?? 0n);
   const upPool = Number(formatUnits(round?.[7] ?? 0n, market.decimals));
   const downPool = Number(formatUnits(round?.[8] ?? 0n, market.decimals));
@@ -65,10 +83,18 @@ export function MarketPanel() {
   async function onBet() {
     try {
       setMessage(null);
+      if (!canBet) {
+        setMessage(
+          roundState === 1
+            ? "The betting window for this round has closed."
+            : "Betting is not open for the current round.",
+        );
+        return;
+      }
       await flow.placeBet(direction, amount, account.allowance);
       setMessage("Transaction submitted. Waiting for HyperEVM confirmation.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bet failed.");
+      setMessage(marketActionErrorMessage(error));
     }
   }
 
@@ -78,7 +104,7 @@ export function MarketPanel() {
       await flow.settle();
       setMessage("Settle submitted. Waiting for confirmation.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Settle failed.");
+      setMessage(marketActionErrorMessage(error));
     }
   }
 
@@ -88,7 +114,7 @@ export function MarketPanel() {
       await flow.claimPendingPayout();
       setMessage("Claim submitted. Waiting for confirmation.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Claim failed.");
+      setMessage(marketActionErrorMessage(error));
     }
   }
 
@@ -166,7 +192,7 @@ export function MarketPanel() {
           <input inputMode="decimal" onChange={(event) => setAmount(event.target.value)} value={amount} />
           <small>Default slippage: {DEFAULT_SLIPPAGE_BPS / 100}%</small>
         </label>
-        <button className="button primary wide" disabled={flow.isPending || !account.isConnected} onClick={onBet} type="button">
+        <button className="button primary wide" disabled={flow.isPending || !canBet} onClick={onBet} type="button">
           {flow.isPending ? <Loader2 className="spin" size={18} /> : null}
           Bet {directionLabels[direction]}
         </button>
