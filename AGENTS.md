@@ -12,6 +12,12 @@ PricePrediction 是一个基于代币价格驱动的预测市场。其主要使�
 - 不在本仓实现生产 watcher / risk engine / Go orchestration 服务
 - 所有协议相关测试代码、集成 harness、主网 / 测试网 rehearsal 脚本、测试日志和解析报告必须放在本仓 `test/`、`integration/`、`docs/testing/` 或对应 runs 输出目录内
 
+显式例外：
+
+- `web/` 是面向真实用户的 Vercel-ready 纯前端应用目录，用于钱包连接、HyperCore / HyperEVM 账户状态、充值引导、下注、settle 和历史查询。
+- `web/` 不改变协议主路径；`src/`、`test/`、`script/`、`ops/` 仍保持 Solidity / Foundry-first。
+- `web/` 不允许引入生产后端、托管私钥或 Go orchestration 服务。
+
 一句话：
 
 **HyperEVM 是投注与结算真值层，HyperCore 是预言机价格来源层。**
@@ -168,3 +174,5 @@ PricePrediction 是一个基于代币价格驱动的预测市场。其主要使�
 - TypeScript harness 只允许放在 `integration/*-harness/`
 - 当前正式隔离目录：
   - `integration/hyperliquid-live-harness/`：真实 HyperEVM / HyperCore testnet 与 mainnet preflight、最小资金 rehearsal、日志和报告生成
+- 当前前端目录：
+  - `web/`：真实用户使用的 Vercel 纯前端应用；不属于协议 TypeScript harness。
