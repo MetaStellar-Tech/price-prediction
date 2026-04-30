@@ -40,12 +40,16 @@ MAKER_EXPOSURE_MIN_BPS="${MAKER_EXPOSURE_MIN_BPS:-4000}"
 MAKER_EXPOSURE_MAX_BPS="${MAKER_EXPOSURE_MAX_BPS:-6000}"
 SLIPPAGE_BPS="${SLIPPAGE_BPS:-500}"
 POLL_SECONDS="${POLL_SECONDS:-12}"
+WATCH_MODE="${WATCH_MODE:-websocket}"
+WS_RPC_URL="${WS_RPC_URL:-}"
+WS_RECONNECT_SECONDS="${WS_RECONNECT_SECONDS:-3}"
 MIN_MAKER_DELAY_SECONDS="${MIN_MAKER_DELAY_SECONDS:-2}"
 MAX_MAKER_DELAY_SECONDS="${MAX_MAKER_DELAY_SECONDS:-12}"
 MAKER_BET_DEADLINE_BUFFER_SECONDS="${MAKER_BET_DEADLINE_BUFFER_SECONDS:-8}"
 CLEANUP_BATCH_SIZE="${CLEANUP_BATCH_SIZE:-50}"
 EVENT_FROM_BLOCK="${EVENT_FROM_BLOCK:-33813039}"
 EVENT_TO_BLOCK="${EVENT_TO_BLOCK:-latest}"
+BET_PLACED_TOPIC="0x5b70029c2661c4a9199ccdd6b370f084615aa3e33d2327ed901579b698ab5a32"
 CAST_SEND_ASYNC="${CAST_SEND_ASYNC:-1}"
 GAS_PRICE_WEI="${GAS_PRICE_WEI:-3100000000}"
 MARKET_GAS_LIMIT="${MARKET_GAS_LIMIT:-500000}"
@@ -77,6 +81,17 @@ require_wallet_env() {
   done
 }
 
+require_websocket_runtime() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "WATCH_MODE=websocket requires node with WebSocket support. Use WATCH_MODE=poll to use polling."
+    exit 1
+  fi
+  if ! node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)' >/dev/null 2>&1; then
+    echo "WATCH_MODE=websocket requires a Node runtime with global WebSocket support. Use WATCH_MODE=poll to use polling."
+    exit 1
+  fi
+}
+
 load_makers() {
   MAKER_ADDRESSES=()
   MAKER_PRIVATE_KEYS=()
@@ -91,6 +106,22 @@ load_makers() {
       MAKER_PRIVATE_KEYS+=("$key")
     fi
   done
+}
+
+websocket_rpc_url() {
+  if [ -n "$WS_RPC_URL" ]; then
+    echo "$WS_RPC_URL"
+    return
+  fi
+  case "$RPC_URL" in
+    https://*) echo "wss://${RPC_URL#https://}" ;;
+    http://*) echo "ws://${RPC_URL#http://}" ;;
+    ws://*|wss://*) echo "$RPC_URL" ;;
+    *)
+      echo "Cannot derive WS_RPC_URL from RPC_URL=$RPC_URL" >&2
+      return 1
+      ;;
+  esac
 }
 
 lower() {
@@ -344,6 +375,9 @@ MAKER_EXPOSURE_MIN_BPS=$MAKER_EXPOSURE_MIN_BPS
 MAKER_EXPOSURE_MAX_BPS=$MAKER_EXPOSURE_MAX_BPS
 SLIPPAGE_BPS=$SLIPPAGE_BPS
 POLL_SECONDS=$POLL_SECONDS
+WATCH_MODE=$WATCH_MODE
+WS_RPC_URL=$WS_RPC_URL
+WS_RECONNECT_SECONDS=$WS_RECONNECT_SECONDS
 MIN_MAKER_DELAY_SECONDS=$MIN_MAKER_DELAY_SECONDS
 MAX_MAKER_DELAY_SECONDS=$MAX_MAKER_DELAY_SECONDS
 CLEANUP_BATCH_SIZE=$CLEANUP_BATCH_SIZE
@@ -684,42 +718,182 @@ do_market_make_round() {
   done
 }
 
+LAST_ROUND=0
+LAST_EXTERNAL=0
+
+process_market_activity() {
+  local reason="${1:-tick}"
+  local event_round="${2:-}"
+  local event_account="${3:-}"
+  local event_tx="${4:-}"
+  local round_id state external_count
+
+  round_id="$(current_round_id)"
+  if [ "$round_id" = "0" ]; then
+    echo "No active round yet; waiting for market activity."
+    return
+  fi
+
+  state="$(round_field "$round_id" state)"
+  if [ "$round_id" != "$LAST_ROUND" ]; then
+    LAST_ROUND="$round_id"
+    LAST_EXTERNAL=0
+    echo "Watching round $round_id state=$(state_name "$state")."
+  fi
+
+  if [ -n "$event_round" ] && [ "$event_round" != "$round_id" ]; then
+    echo "Received BetPlaced for round $event_round tx=$event_tx; current round is $round_id."
+    return
+  fi
+
+  if [ "$state" = "1" ]; then
+    external_count="$(external_participant_count "$round_id")"
+    if [ "$external_count" -gt "$LAST_EXTERNAL" ]; then
+      if [ "$reason" = "bet" ]; then
+        echo "Detected external participant activity in round $round_id from $event_account tx=$event_tx: $external_count"
+      else
+        echo "Detected external participant activity in round $round_id: $external_count"
+      fi
+      LAST_EXTERNAL="$external_count"
+      do_market_make_round "$round_id"
+    elif [ "$reason" = "bet" ]; then
+      echo "Received maker or already-counted BetPlaced in round $round_id from $event_account tx=$event_tx; externalParticipants=$external_count."
+    else
+      echo "Round $round_id betting; externalParticipants=$external_count."
+    fi
+  else
+    echo "Round $round_id state=$(state_name "$state"); maker idle."
+  fi
+}
+
+poll_loop() {
+  while true; do
+    process_market_activity tick
+    sleep "$POLL_SECONDS"
+  done
+}
+
+websocket_event_stream() {
+  local ws_url
+  ws_url="$(websocket_rpc_url)"
+  WS_RPC_URL="$ws_url" MARKET_ADDRESS="$MARKET_ADDRESS" BET_PLACED_TOPIC="$BET_PLACED_TOPIC" \
+    POLL_SECONDS="$POLL_SECONDS" node <<'NODE'
+const wsUrl = process.env.WS_RPC_URL;
+const market = process.env.MARKET_ADDRESS.toLowerCase();
+const betTopic = process.env.BET_PLACED_TOPIC.toLowerCase();
+const heartbeatSeconds = Math.max(1, Number(process.env.POLL_SECONDS || "12"));
+let nextId = 1;
+let heartbeat;
+
+function write(fields) {
+  process.stdout.write(`${fields.join("\t")}\n`);
+}
+
+function normalizeTopicAddress(topic) {
+  if (!topic || topic.length < 42) return "";
+  return `0x${topic.slice(-40)}`.toLowerCase();
+}
+
+function topicUint(topic) {
+  if (!topic) return "";
+  try {
+    return BigInt(topic).toString();
+  } catch {
+    return "";
+  }
+}
+
+function subscribe(ws) {
+  const request = {
+    jsonrpc: "2.0",
+    id: nextId++,
+    method: "eth_subscribe",
+    params: ["logs", { address: market, topics: [betTopic] }],
+  };
+  ws.send(JSON.stringify(request));
+}
+
+const ws = new WebSocket(wsUrl);
+
+ws.addEventListener("open", () => {
+  process.stderr.write(`WebSocket connected: ${wsUrl}\n`);
+  subscribe(ws);
+  write(["tick", "open"]);
+  heartbeat = setInterval(() => write(["tick", "heartbeat"]), heartbeatSeconds * 1000);
+});
+
+ws.addEventListener("message", (event) => {
+  let message;
+  try {
+    message = JSON.parse(event.data);
+  } catch {
+    return;
+  }
+  if (message.error) {
+    process.stderr.write(`WebSocket RPC error: ${JSON.stringify(message.error)}\n`);
+    return;
+  }
+  const log = message?.params?.result;
+  if (!log || !Array.isArray(log.topics)) return;
+  if ((log.address || "").toLowerCase() !== market) return;
+  if ((log.topics[0] || "").toLowerCase() !== betTopic) return;
+  write([
+    "bet",
+    topicUint(log.topics[1]),
+    normalizeTopicAddress(log.topics[2]),
+    log.transactionHash || "",
+  ]);
+});
+
+ws.addEventListener("error", (event) => {
+  process.stderr.write(`WebSocket error${event.message ? `: ${event.message}` : ""}\n`);
+});
+
+ws.addEventListener("close", (event) => {
+  if (heartbeat) clearInterval(heartbeat);
+  process.stderr.write(`WebSocket closed code=${event.code} reason=${event.reason || ""}\n`);
+  process.exit(1);
+});
+NODE
+}
+
+websocket_loop() {
+  local kind a b c
+  echo "Watching market logs over websocket; heartbeat=${POLL_SECONDS}s reconnect=${WS_RECONNECT_SECONDS}s."
+  while true; do
+    while IFS=$'\t' read -r kind a b c; do
+      case "$kind" in
+        bet)
+          process_market_activity bet "$a" "$b" "$c"
+          ;;
+        tick)
+          process_market_activity tick
+          ;;
+      esac
+    done < <(websocket_event_stream)
+    echo "WebSocket event stream ended; reconnecting in ${WS_RECONNECT_SECONDS}s."
+    sleep "$WS_RECONNECT_SECONDS"
+  done
+}
+
 loop() {
   require_runtime_env
   require_wallet_env
   load_makers
 
-  local last_round=0 last_external=0 round_id state external_count
-  while true; do
-    round_id="$(current_round_id)"
-    if [ "$round_id" = "0" ]; then
-      echo "No active round yet; waiting ${POLL_SECONDS}s."
-      sleep "$POLL_SECONDS"
-      continue
-    fi
-
-    state="$(round_field "$round_id" state)"
-    if [ "$round_id" != "$last_round" ]; then
-      last_round="$round_id"
-      last_external=0
-      echo "Watching round $round_id state=$(state_name "$state")."
-    fi
-
-    if [ "$state" = "1" ]; then
-      external_count="$(external_participant_count "$round_id")"
-      if [ "$external_count" -gt "$last_external" ]; then
-        echo "Detected external participant activity in round $round_id: $external_count"
-        last_external="$external_count"
-        do_market_make_round "$round_id"
-      else
-        echo "Round $round_id betting; externalParticipants=$external_count."
-      fi
-    else
-      echo "Round $round_id state=$(state_name "$state"); maker idle."
-    fi
-
-    sleep "$POLL_SECONDS"
-  done
+  case "$WATCH_MODE" in
+    websocket|ws)
+      require_websocket_runtime
+      websocket_loop
+      ;;
+    poll|polling)
+      poll_loop
+      ;;
+    *)
+      echo "Unknown WATCH_MODE=$WATCH_MODE; expected websocket or poll."
+      exit 1
+      ;;
+  esac
 }
 
 rebalance() {

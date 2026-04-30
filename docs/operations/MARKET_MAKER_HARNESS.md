@@ -56,10 +56,18 @@ Approve market USDC spending from maker wallets:
 ./integration/hyperliquid-live-harness/market-maker.sh approve
 ```
 
-Watch active rounds and place balancing maker bets after external participants appear:
+Watch active rounds and place balancing maker bets after external participants appear. By default
+this uses a websocket `eth_subscribe` log stream for `BetPlaced` events and reacts as soon as the
+RPC publishes the log:
 
 ```sh
 ./integration/hyperliquid-live-harness/market-maker.sh loop
+```
+
+To force the older polling-only watcher:
+
+```sh
+WATCH_MODE=poll ./integration/hyperliquid-live-harness/market-maker.sh loop
 ```
 
 Rebalance maker USDC after the current round is `Cleaned`:
@@ -86,6 +94,10 @@ The harness does not try to predict BTC direction or maximize profit. It tries t
 interaction flowing at low cost:
 
 - It only reacts after a non-maker participant appears in the current round.
+- In default `WATCH_MODE=websocket`, it subscribes to market `BetPlaced` logs over `WS_RPC_URL`
+  and runs the maker check immediately when a bet log arrives.
+- `POLL_SECONDS` remains a heartbeat and fallback state-check interval in websocket mode. In
+  `WATCH_MODE=poll`, it is the full polling interval.
 - It prioritizes the empty or smaller pool to reduce no-contest risk.
 - It keeps aggregate maker exposure near a `40/60` to `60/40` Up/Down band.
 - It caps each maker at `6 USDC` per round and all makers at `24 USDC` per round.
@@ -133,8 +145,15 @@ MARKET_GAS_LIMIT=500000
 TOKEN_GAS_LIMIT=80000
 HYPE_TRANSFER_GAS_LIMIT=21000
 MAKER_BET_DEADLINE_BUFFER_SECONDS=8
+WATCH_MODE=websocket
+WS_RPC_URL=
+WS_RECONNECT_SECONDS=3
 ```
 
 This avoids aborting the workflow when the Hyperliquid RPC accepts a transaction but receipt polling
 hits a transient block-height error. Later `status`, `review`, or block explorer checks should be
 used to confirm the final state.
+
+If `WS_RPC_URL` is empty, the harness derives it from `RPC_URL` by replacing `https://` with
+`wss://` or `http://` with `ws://`. If the websocket connection closes, the loop reconnects after
+`WS_RECONNECT_SECONDS`.

@@ -34,6 +34,9 @@ Last updated: 2026-04-30
 - [x] Live market-maker harness skips near-expiry betting windows, parses `previewBet` shares across
   old and new `cast` output formats, and treats `InvalidState` / `BetWindowClosed` bet reverts as
   stale-window races instead of stopping the loop.
+- [x] Live market-maker harness `loop` defaults to websocket `eth_subscribe` for `BetPlaced` logs,
+  reacts immediately to market bet activity, keeps `POLL_SECONDS` as heartbeat/fallback checks, and
+  allows `WATCH_MODE=poll` for the older polling-only mode.
 - [x] Vercel-ready pure frontend added under `web/` with landing page, wallet connect, HyperCore /
   HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
   claim, and user bet history.
@@ -71,6 +74,7 @@ Last updated: 2026-04-30
 - [x] `forge build`
 - [x] `forge test -vvv`
 - [x] `bash -n integration/hyperliquid-live-harness/market-maker.sh`
+- [x] Embedded market-maker websocket listener JavaScript syntax check with `node --check`
 - [x] `web`: `npm run typecheck`
 - [x] `web`: `npm run lint`
 - [x] `web`: `npm run build`
@@ -91,6 +95,7 @@ Last updated: 2026-04-30
   production market maker, does not seek profit, and keeps generated private keys only in an ignored
   local env file. Harness transaction sends default to async mode with explicit gas settings to
   avoid aborting on transient Hyperliquid RPC receipt-polling block-height errors. The harness also
-  avoids submitting bets too close to `stopBetTime` and continues watching if a bet races an
-  operator state transition.
+  avoids submitting bets too close to `stopBetTime`, continues watching if a bet races an operator
+  state transition, and uses a websocket market-log subscription by default with polling available
+  as an explicit fallback.
 - Simulation tests provide practical adversarial coverage, not a formal proof of no arbitrage.
