@@ -40,7 +40,10 @@ MAKER_EXPOSURE_MIN_BPS="${MAKER_EXPOSURE_MIN_BPS:-4000}"
 MAKER_EXPOSURE_MAX_BPS="${MAKER_EXPOSURE_MAX_BPS:-6000}"
 SLIPPAGE_BPS="${SLIPPAGE_BPS:-500}"
 POLL_SECONDS="${POLL_SECONDS:-12}"
-WATCH_MODE="${WATCH_MODE:-websocket}"
+EVENT_POLL_SECONDS="${EVENT_POLL_SECONDS:-2}"
+LOG_LOOKBACK_BLOCKS="${LOG_LOOKBACK_BLOCKS:-4}"
+LOG_QUERY_BLOCK_SPAN="${LOG_QUERY_BLOCK_SPAN:-50}"
+WATCH_MODE="${WATCH_MODE:-auto}"
 WS_RPC_URL="${WS_RPC_URL:-}"
 WS_RECONNECT_SECONDS="${WS_RECONNECT_SECONDS:-3}"
 MIN_MAKER_DELAY_SECONDS="${MIN_MAKER_DELAY_SECONDS:-2}"
@@ -88,6 +91,13 @@ require_websocket_runtime() {
   fi
   if ! node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)' >/dev/null 2>&1; then
     echo "WATCH_MODE=websocket requires a Node runtime with global WebSocket support. Use WATCH_MODE=poll to use polling."
+    exit 1
+  fi
+}
+
+require_node_runtime() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "This watcher mode requires node for log decoding. Use WATCH_MODE=poll to use polling."
     exit 1
   fi
 }
@@ -375,6 +385,9 @@ MAKER_EXPOSURE_MIN_BPS=$MAKER_EXPOSURE_MIN_BPS
 MAKER_EXPOSURE_MAX_BPS=$MAKER_EXPOSURE_MAX_BPS
 SLIPPAGE_BPS=$SLIPPAGE_BPS
 POLL_SECONDS=$POLL_SECONDS
+EVENT_POLL_SECONDS=$EVENT_POLL_SECONDS
+LOG_LOOKBACK_BLOCKS=$LOG_LOOKBACK_BLOCKS
+LOG_QUERY_BLOCK_SPAN=$LOG_QUERY_BLOCK_SPAN
 WATCH_MODE=$WATCH_MODE
 WS_RPC_URL=$WS_RPC_URL
 WS_RECONNECT_SECONDS=$WS_RECONNECT_SECONDS
@@ -773,6 +786,92 @@ poll_loop() {
   done
 }
 
+latest_block_number() {
+  cast block-number --rpc-url "$RPC_URL"
+}
+
+poll_bet_logs() {
+  local from_block="$1"
+  local to_block="$2"
+  local logs tmp
+  tmp="$(mktemp)"
+  if ! cast logs --json --rpc-url "$RPC_URL" --from-block "$from_block" --to-block "$to_block" \
+    --address "$MARKET_ADDRESS" "$BET_PLACED_TOPIC" > "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  logs="$(cat "$tmp")"
+  rm -f "$tmp"
+  LOGS_JSON="$logs" node <<'NODE'
+const logs = JSON.parse(process.env.LOGS_JSON || "[]");
+
+function normalizeTopicAddress(topic) {
+  if (!topic || topic.length < 42) return "";
+  return `0x${topic.slice(-40)}`.toLowerCase();
+}
+
+function topicUint(topic) {
+  if (!topic) return "";
+  try {
+    return BigInt(topic).toString();
+  } catch {
+    return "";
+  }
+}
+
+for (const log of logs) {
+  const topics = Array.isArray(log.topics) ? log.topics : [];
+  process.stdout.write([
+    topicUint(topics[1]),
+    normalizeTopicAddress(topics[2]),
+    log.transactionHash || log.transaction_hash || "",
+  ].join("\t") + "\n");
+}
+NODE
+}
+
+log_poll_loop() {
+  local latest last_seen from_block to_block chunk_to event_round event_account event_tx
+  latest="$(latest_block_number)"
+  if [ "$latest" -gt "$LOG_LOOKBACK_BLOCKS" ]; then
+    last_seen=$((latest - LOG_LOOKBACK_BLOCKS))
+  else
+    last_seen=0
+  fi
+  echo "Watching market logs by eth_getLogs polling; interval=${EVENT_POLL_SECONDS}s heartbeat=${POLL_SECONDS}s fromBlock=$((last_seen + 1))."
+  process_market_activity tick
+
+  local last_heartbeat
+  last_heartbeat="$(date +%s)"
+  while true; do
+    latest="$(latest_block_number)"
+    from_block=$((last_seen + 1))
+    to_block="$latest"
+
+    while [ "$from_block" -le "$to_block" ]; do
+      chunk_to=$((from_block + LOG_QUERY_BLOCK_SPAN - 1))
+      if [ "$chunk_to" -gt "$to_block" ]; then
+        chunk_to="$to_block"
+      fi
+      while IFS=$'\t' read -r event_round event_account event_tx; do
+        [ -z "$event_round" ] && continue
+        process_market_activity bet "$event_round" "$event_account" "$event_tx"
+      done < <(poll_bet_logs "$from_block" "$chunk_to")
+      last_seen="$chunk_to"
+      from_block=$((chunk_to + 1))
+    done
+
+    local now
+    now="$(date +%s)"
+    if [ $((now - last_heartbeat)) -ge "$POLL_SECONDS" ]; then
+      process_market_activity tick
+      last_heartbeat="$now"
+    fi
+
+    sleep "$EVENT_POLL_SECONDS"
+  done
+}
+
 websocket_event_stream() {
   local ws_url
   ws_url="$(websocket_rpc_url)"
@@ -882,15 +981,29 @@ loop() {
   load_makers
 
   case "$WATCH_MODE" in
+    auto)
+      if [ -n "$WS_RPC_URL" ]; then
+        require_websocket_runtime
+        websocket_loop
+      else
+        require_node_runtime
+        echo "WS_RPC_URL is not set; using low-latency eth_getLogs polling because the default Hyperliquid EVM RPC does not expose websocket subscriptions."
+        log_poll_loop
+      fi
+      ;;
     websocket|ws)
       require_websocket_runtime
       websocket_loop
+      ;;
+    logs|log-poll|event-poll)
+      require_node_runtime
+      log_poll_loop
       ;;
     poll|polling)
       poll_loop
       ;;
     *)
-      echo "Unknown WATCH_MODE=$WATCH_MODE; expected websocket or poll."
+      echo "Unknown WATCH_MODE=$WATCH_MODE; expected auto, websocket, logs, or poll."
       exit 1
       ;;
   esac

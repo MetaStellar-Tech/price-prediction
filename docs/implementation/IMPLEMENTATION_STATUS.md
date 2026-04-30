@@ -36,9 +36,11 @@ Last updated: 2026-04-30
 - [x] Live market-maker harness skips near-expiry betting windows, parses `previewBet` shares across
   old and new `cast` output formats, and treats `InvalidState` / `BetWindowClosed` bet reverts as
   stale-window races instead of stopping the loop.
-- [x] Live market-maker harness `loop` defaults to websocket `eth_subscribe` for `BetPlaced` logs,
-  reacts immediately to market bet activity, keeps `POLL_SECONDS` as heartbeat/fallback checks, and
-  allows `WATCH_MODE=poll` for the older polling-only mode.
+- [x] Live market-maker harness `loop` defaults to `WATCH_MODE=auto`: it uses websocket
+  `eth_subscribe` for `BetPlaced` logs only when `WS_RPC_URL` is explicitly set, otherwise it uses
+  low-latency `eth_getLogs` polling with `EVENT_POLL_SECONDS=2`; `WATCH_MODE=poll` remains
+  available for the older state polling-only mode. Log polling chunks requests at
+  `LOG_QUERY_BLOCK_SPAN=50`.
 - [x] Vercel-ready pure frontend added under `web/` with landing page, wallet connect, HyperCore /
   HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
   claim, and user bet history.
@@ -99,6 +101,7 @@ Last updated: 2026-04-30
   local env file. Harness transaction sends default to async mode with explicit gas settings to
   avoid aborting on transient Hyperliquid RPC receipt-polling block-height errors. The harness also
   avoids submitting bets too close to `stopBetTime`, continues watching if a bet races an operator
-  state transition, and uses a websocket market-log subscription by default with polling available
-  as an explicit fallback.
+  state transition, and uses low-latency event-log polling by default because the public
+  Hyperliquid EVM RPC does not expose websocket subscriptions. Third-party websocket RPCs remain
+  supported by setting `WS_RPC_URL`.
 - Simulation tests provide practical adversarial coverage, not a formal proof of no arbitrage.
