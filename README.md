@@ -86,4 +86,19 @@ cp .env.example .env
 
 See `docs/deployment/DEPLOYMENT.md` for the full environment contract and verification mode.
 
+## Operations
+
+The repo includes a small Foundry/cast based operator runner for maintaining an already deployed
+market. It can set a separate operator, then periodically call `startRound`, `stopBet`, `settle`,
+and `cleanup` according to the on-chain round state.
+
+```sh
+./ops/operator.sh status
+./ops/operator.sh set-operator
+./ops/operator.sh tick
+./ops/operator.sh loop
+```
+
+See `docs/operations/OPERATOR_RUNNER.md` for the required `.env` values and tick policy.
+
 This repository intentionally does not include a Go backend, production watcher, Hardhat workflow, or TypeScript protocol harness in the main path.

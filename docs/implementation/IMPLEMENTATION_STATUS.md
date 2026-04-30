@@ -27,6 +27,8 @@ Last updated: 2026-04-30
   current block gas limit.
 - [x] `PricePredictionMarket` deployed and post-deploy checked on Hyperliquid EVM mainnet at
   `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`.
+- [x] Repo-local operator runner added for `status`, `set-operator`, one-shot `tick`, and
+  continuous `loop` maintenance.
 
 ## Verification
 
@@ -41,4 +43,6 @@ Last updated: 2026-04-30
 - V1 does not include production watcher, Go backend, Hardhat, or main-path TypeScript harness.
 - Deployment remains Foundry-first and uses `.env` plus `script/deploy.sh`; generated `broadcast/`
   artifacts are not committed. The default deployment target is Hyperliquid EVM mainnet.
+- Operations remain Foundry/cast based and repo-local. The operator runner is not a production Go
+  watcher, risk engine, or off-chain oracle service.
 - Simulation tests provide practical adversarial coverage, not a formal proof of no arbitrage.

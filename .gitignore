@@ -5,6 +5,8 @@ lib/
 .env
 .env.*
 !.env.example
+ops/*.log
+ops/*.pid
 
 *.swp
 *.swo
