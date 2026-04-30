@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 
 ## Completed And Verified
 
@@ -19,6 +19,14 @@ Last updated: 2026-04-29
 - [x] Deterministic unit tests implemented.
 - [x] Simulation test implemented to search sampled two-sided lock-profit combinations.
 - [x] Canonical protocol algorithm documentation added for share pricing, settlement, and payout math.
+- [x] Foundry deployment script implemented with `.env` wallet/private-key loading and deployer address validation.
+- [x] One-command deployment wrapper implemented for dry-run, broadcast, and optional verifier modes.
+- [x] Deployment environment template and deployment documentation added.
+- [x] Deployment defaults set to Hyperliquid EVM mainnet (`CHAIN_ID=999`, `RPC_URL=https://rpc.hyperliquid.xyz/evm`).
+- [x] Foundry bytecode metadata hash disabled to keep HyperEVM mainnet deployment gas below the
+  current block gas limit.
+- [x] `PricePredictionMarket` deployed and post-deploy checked on Hyperliquid EVM mainnet at
+  `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`.
 
 ## Verification
 
@@ -31,4 +39,6 @@ Last updated: 2026-04-29
 - V1 uses native HyperEVM L1Read/CoreRead only.
 - `CoreReadAttestor` is documented as a future fallback and is not implemented.
 - V1 does not include production watcher, Go backend, Hardhat, or main-path TypeScript harness.
+- Deployment remains Foundry-first and uses `.env` plus `script/deploy.sh`; generated `broadcast/`
+  artifacts are not committed. The default deployment target is Hyperliquid EVM mainnet.
 - Simulation tests provide practical adversarial coverage, not a formal proof of no arbitrage.

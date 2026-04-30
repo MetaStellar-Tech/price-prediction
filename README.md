@@ -72,4 +72,18 @@ forge build
 forge test -vvv
 ```
 
+## Deployment
+
+The Foundry deployment toolchain defaults to Hyperliquid EVM mainnet (`CHAIN_ID=999`,
+`RPC_URL=https://rpc.hyperliquid.xyz/evm`) and reads wallet, private key, role addresses, stake
+token, and Hyperliquid CoreRead constructor parameters from `.env`.
+
+```sh
+cp .env.example .env
+./script/deploy.sh          # dry-run
+./script/deploy.sh deploy   # broadcast
+```
+
+See `docs/deployment/DEPLOYMENT.md` for the full environment contract and verification mode.
+
 This repository intentionally does not include a Go backend, production watcher, Hardhat workflow, or TypeScript protocol harness in the main path.

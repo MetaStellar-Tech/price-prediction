@@ -2,7 +2,19 @@
 
 ## Deployment Target
 
-PricePrediction V1 targets Hyperliquid HyperEVM. HyperCore is the BTC oracle source.
+PricePrediction V1 targets Hyperliquid HyperEVM mainnet by default. HyperCore is the BTC oracle
+source.
+
+Default deployment network:
+
+```text
+chainId = 999
+rpcUrl = https://rpc.hyperliquid.xyz/evm
+gasToken = HYPE
+```
+
+Testnet deployments are allowed only when the deployment `.env` explicitly overrides both `RPC_URL`
+and `CHAIN_ID`.
 
 ## CoreRead Boundary
 
