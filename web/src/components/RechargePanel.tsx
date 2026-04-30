@@ -2,19 +2,20 @@ import { useMemo, useState } from "react";
 import { ArrowRightLeft, Check, ExternalLink, Fuel, Send } from "lucide-react";
 import { formatUnits } from "viem";
 import { HYPE_GAS_RESERVE, HYPE_TOP_UP_USDC } from "../lib/config";
-import { buildHypeTopUpPlan, buildUsdcBridgePlan, coreBalance } from "../lib/hyperliquid";
-import { useAccountState, useHyperliquidExchange, useMids } from "../lib/hooks";
+import { buildHypeTopUpPlan, buildUsdcBridgePlan, coreBalance, spotMidPrice } from "../lib/hyperliquid";
+import { useAccountState, useHyperliquidExchange, useMids, useSpotMeta } from "../lib/hooks";
 import { formatNumber } from "../lib/format";
 
 export function RechargePanel() {
   const account = useAccountState();
   const mids = useMids();
+  const spotMeta = useSpotMeta();
   const [usdcAmount, setUsdcAmount] = useState("25");
   const [submittedStep, setSubmittedStep] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const evmHype = Number(formatUnits(account.hypeBalance ?? 0n, 18));
   const needsHype = account.isConnected && evmHype < HYPE_GAS_RESERVE;
-  const hypeMid = mids.data ? Number(mids.data.HYPE ?? mids.data["HYPE/USDC"]) : undefined;
+  const hypeMid = spotMidPrice(spotMeta.data, mids.data, "HYPE", "USDC");
   const exchange = useHyperliquidExchange();
   const estimatedHypeAmount = hypeMid && hypeMid > 0 ? (HYPE_TOP_UP_USDC / (hypeMid * 1.03)).toFixed(5) : "";
   const plan = useMemo(
@@ -22,6 +23,7 @@ export function RechargePanel() {
     [hypeMid, needsHype, usdcAmount],
   );
   const coreUsdc = coreBalance(account.coreBalances, "USDC")?.available ?? 0;
+  const signDisabled = Boolean(exchange.disabledReason);
 
   async function executeStep(kind: string, index: number) {
     try {
@@ -78,8 +80,9 @@ export function RechargePanel() {
             </div>
             <button
               className="button compact"
-              disabled={!exchange.isReady || exchange.isLoading}
+              disabled={signDisabled}
               onClick={() => executeStep(`${step.kind}-${index}`, index)}
+              title={exchange.disabledReason}
               type="button"
             >
               {submittedStep === `${step.kind}-${index}` ? <Check size={16} /> : <ArrowRightLeft size={16} />}
@@ -88,6 +91,7 @@ export function RechargePanel() {
           </div>
         ))}
       </div>
+      {exchange.disabledReason ? <p className="inline-muted">{exchange.disabledReason}</p> : null}
       {status ? <p className="callout">{status}</p> : null}
 
       <a

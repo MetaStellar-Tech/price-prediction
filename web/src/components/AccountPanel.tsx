@@ -1,4 +1,4 @@
-import { Coins, Gauge, ShieldCheck } from "lucide-react";
+import { Coins, Gauge, ShieldCheck, WalletCards } from "lucide-react";
 import { useAccountState } from "../lib/hooks";
 import { HYPEREVM_CHAIN_ID } from "../lib/config";
 import { coreBalance } from "../lib/hyperliquid";
@@ -10,6 +10,7 @@ export function AccountPanel() {
   const coreUsdc = coreBalance(account.coreBalances, "USDC");
   const coreHype = coreBalance(account.coreBalances, "HYPE");
   const isReady = account.isConnected && account.chainId === HYPEREVM_CHAIN_ID;
+  const accountMode = account.accountAbstraction ?? "unknown";
 
   return (
     <section className="panel">
@@ -61,11 +62,35 @@ export function AccountPanel() {
         </div>
         <div>
           <ShieldCheck size={18} />
-          <span>Custody</span>
-          <strong>Wallet signed</strong>
+          <span>HL mode</span>
+          <strong>{accountMode}</strong>
         </div>
+      </div>
+
+      <div className="core-balances">
+        <div className="mini-title">
+          <WalletCards size={17} />
+          <strong>HyperCore spot balances</strong>
+        </div>
+        {account.coreBalancesError ? (
+          <p className="inline-error">
+            {(account.coreBalancesError as Error).message ?? "Unable to read HyperCore balances."}
+          </p>
+        ) : null}
+        {account.coreBalances && account.coreBalances.length > 0 ? (
+          <div className="balance-table">
+            {account.coreBalances.map((balance) => (
+              <div className="balance-row" key={balance.coin}>
+                <span>{balance.coin}</span>
+                <strong>{formatNumber(balance.available, balance.available < 1 ? 4 : 2)}</strong>
+                <small>Total {formatNumber(balance.total, balance.total < 1 ? 4 : 2)}</small>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="inline-muted">No HyperCore spot assets found for this wallet.</p>
+        )}
       </div>
     </section>
   );
 }
-

@@ -414,6 +414,57 @@ button {
   margin-left: auto;
 }
 
+.core-balances {
+  margin-top: 14px;
+  padding: 12px;
+  background: #f8faf6;
+  border: 1px solid #e1e7df;
+  border-radius: 8px;
+}
+
+.mini-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.balance-table {
+  display: grid;
+  gap: 8px;
+}
+
+.balance-row {
+  display: grid;
+  grid-template-columns: minmax(56px, 0.8fr) minmax(80px, 1fr) minmax(100px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid #e1e7df;
+  border-radius: 8px;
+}
+
+.balance-row span {
+  color: #52665d;
+  font-weight: 800;
+}
+
+.balance-row strong {
+  font-size: 18px;
+}
+
+.balance-row small,
+.inline-muted {
+  color: #6d7e76;
+}
+
+.inline-error {
+  margin: 8px 0;
+  color: #9d2f2f;
+  font-size: 13px;
+}
+
 .pool-row {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) minmax(120px, 2fr) minmax(160px, 1fr);
@@ -713,4 +764,3 @@ button {
     justify-self: start;
   }
 }
-
