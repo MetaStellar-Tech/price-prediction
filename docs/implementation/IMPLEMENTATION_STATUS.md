@@ -36,8 +36,12 @@ Last updated: 2026-04-30
   `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`, and stake token
   `0xb88339CB7199b77E23DB6E890353E22632Ba630f`.
 - [x] Frontend HYPE top-up flow avoids MetaMask `chainId` mismatch on Hyperliquid L1 orders by
-  approving a browser-local Hyperliquid API wallet, then signing the spot order with that local
-  agent wallet.
+  approving a browser-local Hyperliquid API wallet with a Hyperliquid-valid 16-character-or-shorter
+  agent name, then signing the spot order with that local agent wallet.
+- [x] Frontend Hyperliquid Core signed actions (`approveAgent`, `spotSend`) use an ethers-style
+  wallet adapter that signs typed data with the provider's current `eth_chainId` through
+  `eth_signTypedData_v4`, avoiding the SDK's viem branch and MetaMask SDK active-chain/domain-chain
+  mismatches.
 
 ## Verification
 

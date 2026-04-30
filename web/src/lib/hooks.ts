@@ -3,8 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { ExchangeClient, HttpTransport } from "@nktkas/hyperliquid";
 import type { AbstractWallet } from "@nktkas/hyperliquid/signing";
 import {
-  createWalletClient,
-  custom,
   parseUnits,
   type Address,
   type GetContractEventsReturnType,
@@ -23,7 +21,7 @@ import {
   useWriteContract,
 } from "wagmi";
 import { erc20Abi, marketAbi } from "./abi";
-import { config, hyperEvm } from "./config";
+import { config } from "./config";
 import {
   getAllMids,
   getSpotBalances,
@@ -38,16 +36,16 @@ export const roundStateLabels = ["None", "Betting", "Betting closed", "Settled",
 export const outcomeLabels = ["None", "Up", "Down", "Draw", "No contest"];
 export const directionLabels = ["Up", "Down"];
 
-type HyperliquidTypedDataParams = {
-  domain: {
-    name: string;
-    version: string;
-    chainId: number;
-    verifyingContract: `0x${string}`;
-  };
-  types: Record<string, { name: string; type: string }[]>;
-  primaryType: string;
-  message: Record<string, unknown>;
+type HyperliquidTypedDataDomain = {
+  name: string;
+  version: string;
+  chainId: number;
+  verifyingContract: `0x${string}`;
+};
+
+type TypedDataField = {
+  name: string;
+  type: string;
 };
 
 type Eip1193Provider = {
@@ -55,7 +53,7 @@ type Eip1193Provider = {
 };
 
 const HYPERLIQUID_AGENT_KEY_PREFIX = "price-prediction:hyperliquid-agent:";
-const HYPERLIQUID_AGENT_NAME = "PricePrediction Web";
+const HYPERLIQUID_AGENT_NAME = "PricePredict";
 
 function exchangeApiBaseUrl() {
   return config.hyperliquidExchangeUrl.replace(/\/exchange\/?$/, "");
@@ -71,31 +69,56 @@ function getOrCreateAgentPrivateKey(owner: Address): Hex {
   return privateKey;
 }
 
-async function ensureHyperEvmChain(provider: Eip1193Provider) {
-  const targetChainId = `0x${hyperEvm.id.toString(16)}`;
-  const activeChainId = await provider.request({ method: "eth_chainId" });
-  if (activeChainId === targetChainId) return;
-  try {
-    await provider.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: targetChainId }],
-    });
-  } catch (error) {
-    const code = typeof error === "object" && error && "code" in error ? (error as { code?: unknown }).code : undefined;
-    if (code !== 4902) throw error;
-    await provider.request({
-      method: "wallet_addEthereumChain",
-      params: [
-        {
-          chainId: targetChainId,
-          chainName: hyperEvm.name,
-          nativeCurrency: hyperEvm.nativeCurrency,
-          rpcUrls: hyperEvm.rpcUrls.default.http,
-          blockExplorerUrls: [hyperEvm.blockExplorers.default.url],
-        },
-      ],
-    });
+async function providerChainId(provider: Eip1193Provider): Promise<Hex> {
+  const chainId = await provider.request({ method: "eth_chainId" });
+  if (typeof chainId !== "string" || !chainId.startsWith("0x")) {
+    throw new Error("Wallet provider returned an invalid chain id.");
   }
+  return chainId as Hex;
+}
+
+function providerChainIdNumber(chainId: Hex): number {
+  const value = Number(BigInt(chainId));
+  if (!Number.isSafeInteger(value)) throw new Error(`Wallet chain id ${chainId} is too large.`);
+  return value;
+}
+
+function hyperliquidWallet(provider: Eip1193Provider, address: Address): AbstractWallet {
+  return {
+    getAddress: async () => address,
+    provider: {
+      getNetwork: async () => ({ chainId: providerChainIdNumber(await providerChainId(provider)) }),
+    },
+    signTypedData: async (
+      domain: HyperliquidTypedDataDomain,
+      types: Record<string, TypedDataField[]>,
+      message: Record<string, unknown>,
+    ) => {
+      const chainId = providerChainIdNumber(await providerChainId(provider));
+      const primaryType = Object.keys(types)[0];
+      if (!primaryType) throw new Error("Hyperliquid typed data is missing a primary type.");
+      return provider.request({
+        method: "eth_signTypedData_v4",
+        params: [
+          address,
+          JSON.stringify({
+            domain: { ...domain, chainId },
+            types: {
+              EIP712Domain: [
+                { name: "name", type: "string" },
+                { name: "version", type: "string" },
+                { name: "chainId", type: "uint256" },
+                { name: "verifyingContract", type: "address" },
+              ],
+              ...types,
+            },
+            primaryType,
+            message,
+          }),
+        ],
+      }) as Promise<Hex>;
+    },
+  };
 }
 
 export function useTokenMeta() {
@@ -340,25 +363,10 @@ export function useHyperliquidExchange() {
     return async () => {
       const provider = (await connector.getProvider()) as Eip1193Provider | undefined;
       if (!provider) throw new Error("Wallet provider is not ready yet.");
-      await ensureHyperEvmChain(provider);
-      const walletClient = createWalletClient({
-        transport: custom(provider as Parameters<typeof custom>[0]),
-      });
-      const wallet: AbstractWallet = {
-        getAddresses: () => walletClient.getAddresses(),
-        getChainId: () => walletClient.getChainId(),
-        signTypedData: (params: HyperliquidTypedDataParams) =>
-          walletClient.signTypedData({
-            account: address,
-            domain: params.domain,
-            types: params.types,
-            primaryType: params.primaryType,
-            message: params.message,
-          }),
-      };
       return new ExchangeClient({
         transport: new HttpTransport({ apiUrl: exchangeApiBaseUrl() }),
-        wallet,
+        signatureChainId: () => providerChainId(provider),
+        wallet: hyperliquidWallet(provider, address),
       });
     };
   }, [address, connector]);
