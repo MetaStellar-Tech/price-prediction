@@ -22,7 +22,13 @@ import {
   useWriteContract,
 } from "wagmi";
 import { erc20Abi, marketAbi } from "./abi";
-import { config } from "./config";
+import {
+  APPROVE_GAS_LIMIT,
+  BET_GAS_LIMIT,
+  CLAIM_PAYOUT_GAS_LIMIT,
+  SETTLE_GAS_LIMIT,
+  config,
+} from "./config";
 import {
   getAllMids,
   getExtraAgents,
@@ -585,6 +591,7 @@ export function useBetFlow(onDone: () => void) {
     amount: string,
     allowance?: bigint,
     slippageBps = 100,
+    quotedShares?: bigint,
   ) {
     const parsed = parseUnits(amount || "0", token.decimals);
     if (parsed <= 0n) throw new Error("Enter a positive amount.");
@@ -594,25 +601,23 @@ export function useBetFlow(onDone: () => void) {
         abi: erc20Abi,
         functionName: "approve",
         args: [config.marketAddress, parsed],
+        gas: APPROVE_GAS_LIMIT,
       });
     }
 
-    const previewClient = await import("wagmi/actions").then((mod) => mod.readContract);
-    const { wagmiConfig } = await import("./wagmi");
-    const preview = await previewClient(wagmiConfig, {
-      address: config.marketAddress,
-      abi: marketAbi,
-      functionName: "previewBet",
-      args: [direction, parsed],
-    });
     const boundedSlippageBps = Math.min(Math.max(Math.trunc(slippageBps), 0), 10_000);
-    const minSharesOut = (preview[3] * BigInt(10_000 - boundedSlippageBps)) / 10_000n;
+    if (quotedShares === undefined) {
+      throw new Error("Quote is temporarily unavailable. Wait a few seconds and refresh the quote.");
+    }
+    const shares = quotedShares;
+    const minSharesOut = (shares * BigInt(10_000 - boundedSlippageBps)) / 10_000n;
 
     const txHash = await writeContractAsync({
       address: config.marketAddress,
       abi: marketAbi,
       functionName: "bet",
       args: [direction, parsed, minSharesOut],
+      gas: BET_GAS_LIMIT,
     });
     return txHash;
   }
@@ -622,6 +627,7 @@ export function useBetFlow(onDone: () => void) {
       address: config.marketAddress,
       abi: marketAbi,
       functionName: "settle",
+      gas: SETTLE_GAS_LIMIT,
     });
   }
 
@@ -630,6 +636,7 @@ export function useBetFlow(onDone: () => void) {
       address: config.marketAddress,
       abi: marketAbi,
       functionName: "claimPendingPayout",
+      gas: CLAIM_PAYOUT_GAS_LIMIT,
     });
   }
 

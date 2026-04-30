@@ -65,6 +65,9 @@ npm run build
 - Bet actions are disabled outside the active betting window, show a live `previewBet` quote with
   first-bet price impact included, default to a 1 USDC stake and 5% slippage limit, refresh the
   quote immediately before submission, and decode market custom errors into user-readable messages.
+- Bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas limits for
+  market writes, and maps RPC rate-limit failures to retry guidance to avoid surfacing raw viem
+  contract-call traces to users.
 - Contract writes are submitted through the connected EVM wallet.
 - Hyperliquid Core recharge actions are shown as explicit action previews before submission.
   Core-to-HyperEVM linked-token transfers use Hyperliquid `sendAsset`, not legacy `spotSend`, so

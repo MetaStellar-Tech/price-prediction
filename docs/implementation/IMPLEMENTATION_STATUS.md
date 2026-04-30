@@ -64,6 +64,9 @@ Last updated: 2026-04-30
 - [x] Frontend bet ticket shows live `previewBet` execution details, including estimated shares,
   minimum shares, average price, before/after price, and first-bet price impact; bet submission
   refreshes the quote immediately before sending and defaults to a 1 USDC stake with 5% slippage.
+- [x] Frontend bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas
+  limits for market writes, and maps RPC rate-limit failures to retry guidance instead of showing
+  raw viem contract-call traces.
 - [x] Frontend market writes show a top-right transaction notification after wallet submission,
   update it when the HyperEVM receipt succeeds or fails, and dismiss it automatically after the
   final state is shown.

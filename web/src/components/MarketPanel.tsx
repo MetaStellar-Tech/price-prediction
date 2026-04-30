@@ -45,6 +45,9 @@ function marketActionErrorMessage(error: unknown) {
   if (message.includes("SlippageExceeded")) {
     return "Final shares were below your slippage limit. Refresh the quote or choose a wider limit.";
   }
+  if (message.toLowerCase().includes("rate limited")) {
+    return "The HyperEVM RPC is rate limiting contract simulation right now. Wait a few seconds and retry; the app now avoids extra pre-submit calls where possible.";
+  }
   return message || "Market action failed.";
 }
 
@@ -164,8 +167,9 @@ export function MarketPanel() {
         );
         return;
       }
-      await preview.refetch();
-      const hash = await flow.placeBet(direction, amount, account.allowance, slippageBps);
+      const refreshedPreview = preview.data ? undefined : await preview.refetch();
+      const shares = preview.data?.[3] ?? refreshedPreview?.data?.[3];
+      const hash = await flow.placeBet(direction, amount, account.allowance, slippageBps, shares);
       showSubmittedToast("Bet submitted", hash);
       setMessage("Transaction submitted. Waiting for HyperEVM confirmation.");
     } catch (error) {
