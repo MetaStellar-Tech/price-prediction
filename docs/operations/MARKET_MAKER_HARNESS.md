@@ -116,3 +116,19 @@ For narrower event scans, pass block bounds as environment variables:
 ```sh
 FROM_BLOCK=33813039 TO_BLOCK=latest ./integration/hyperliquid-live-harness/market-maker.sh review
 ```
+
+## RPC Send Mode
+
+The harness defaults to async transaction submission with explicit gas values:
+
+```text
+CAST_SEND_ASYNC=1
+GAS_PRICE_WEI=3100000000
+MARKET_GAS_LIMIT=500000
+TOKEN_GAS_LIMIT=80000
+HYPE_TRANSFER_GAS_LIMIT=21000
+```
+
+This avoids aborting the workflow when the Hyperliquid RPC accepts a transaction but receipt polling
+hits a transient block-height error. Later `status`, `review`, or block explorer checks should be
+used to confirm the final state.

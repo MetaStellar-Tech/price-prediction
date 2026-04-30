@@ -50,5 +50,6 @@ Last updated: 2026-04-30
   watcher, risk engine, or off-chain oracle service.
 - The live market-maker harness is a rehearsal tool for contract interaction coverage. It is not a
   production market maker, does not seek profit, and keeps generated private keys only in an ignored
-  local env file.
+  local env file. Harness transaction sends default to async mode with explicit gas settings to
+  avoid aborting on transient Hyperliquid RPC receipt-polling block-height errors.
 - Simulation tests provide practical adversarial coverage, not a formal proof of no arbitrage.

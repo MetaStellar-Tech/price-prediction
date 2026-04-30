@@ -45,6 +45,11 @@ MAX_MAKER_DELAY_SECONDS="${MAX_MAKER_DELAY_SECONDS:-12}"
 CLEANUP_BATCH_SIZE="${CLEANUP_BATCH_SIZE:-50}"
 EVENT_FROM_BLOCK="${EVENT_FROM_BLOCK:-33813039}"
 EVENT_TO_BLOCK="${EVENT_TO_BLOCK:-latest}"
+CAST_SEND_ASYNC="${CAST_SEND_ASYNC:-1}"
+GAS_PRICE_WEI="${GAS_PRICE_WEI:-3100000000}"
+MARKET_GAS_LIMIT="${MARKET_GAS_LIMIT:-500000}"
+TOKEN_GAS_LIMIT="${TOKEN_GAS_LIMIT:-80000}"
+HYPE_TRANSFER_GAS_LIMIT="${HYPE_TRANSFER_GAS_LIMIT:-21000}"
 
 require_env() {
   local name="$1"
@@ -129,12 +134,21 @@ call_market() {
   cast call --rpc-url "$RPC_URL" "$MARKET_ADDRESS" "$@"
 }
 
+send_mode_args() {
+  if [ "$CAST_SEND_ASYNC" = "1" ]; then
+    printf '%s\n' "--async"
+  fi
+}
+
 send_market() {
   local private_key="$1"
   shift
   cast send \
+    $(send_mode_args) \
     --rpc-url "$RPC_URL" \
     --chain "$CHAIN_ID" \
+    --gas-price "$GAS_PRICE_WEI" \
+    --gas-limit "$MARKET_GAS_LIMIT" \
     --private-key "$private_key" \
     "$MARKET_ADDRESS" \
     "$@"
@@ -148,8 +162,11 @@ send_token() {
   local private_key="$1"
   shift
   cast send \
+    $(send_mode_args) \
     --rpc-url "$RPC_URL" \
     --chain "$CHAIN_ID" \
+    --gas-price "$GAS_PRICE_WEI" \
+    --gas-limit "$TOKEN_GAS_LIMIT" \
     --private-key "$private_key" \
     "$STAKE_TOKEN" \
     "$@"
@@ -160,8 +177,11 @@ send_hype() {
   local to="$2"
   local amount="$3"
   cast send \
+    $(send_mode_args) \
     --rpc-url "$RPC_URL" \
     --chain "$CHAIN_ID" \
+    --gas-price "$GAS_PRICE_WEI" \
+    --gas-limit "$HYPE_TRANSFER_GAS_LIMIT" \
     --private-key "$private_key" \
     --value "$amount" \
     "$to"
@@ -324,6 +344,11 @@ MAX_MAKER_DELAY_SECONDS=$MAX_MAKER_DELAY_SECONDS
 CLEANUP_BATCH_SIZE=$CLEANUP_BATCH_SIZE
 EVENT_FROM_BLOCK=$EVENT_FROM_BLOCK
 EVENT_TO_BLOCK=$EVENT_TO_BLOCK
+CAST_SEND_ASYNC=$CAST_SEND_ASYNC
+GAS_PRICE_WEI=$GAS_PRICE_WEI
+MARKET_GAS_LIMIT=$MARKET_GAS_LIMIT
+TOKEN_GAS_LIMIT=$TOKEN_GAS_LIMIT
+HYPE_TRANSFER_GAS_LIMIT=$HYPE_TRANSFER_GAS_LIMIT
 EOF
 
   chmod 600 "$ENV_FILE"
