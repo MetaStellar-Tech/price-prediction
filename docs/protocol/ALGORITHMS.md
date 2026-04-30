@@ -38,13 +38,16 @@ sharePriceBps = clamp(sharePriceBps, minSharePriceBps, maxSharePriceBps)
 Default V1 parameters:
 
 ```text
+MIN_BET_AMOUNT = 1e6
+stopBetOffset = 120 seconds
+roundDuration = 130 seconds
 basePriceBps = 10000
-maxTimePremiumBps = 5000
-maxTrendAdjustmentBps = 4000
+maxTimePremiumBps = 1500
+maxTrendAdjustmentBps = 1500
 trendMoveCapBps = 1000
-maxPoolImbalanceAdjustmentBps = 6000
+maxPoolImbalanceAdjustmentBps = 1500
 minSharePriceBps = 2000
-maxSharePriceBps = 30000
+maxSharePriceBps = 20000
 ```
 
 ### Time Premium
@@ -132,20 +135,23 @@ pool adjustment = negative
 Each bet uses average execution pricing. The contract computes:
 
 ```text
+received = stakeToken.balanceOf(marketAfterTransfer) - stakeToken.balanceOf(marketBeforeTransfer)
 priceBefore = quoteSharePriceBps(roundId, direction, currentPriceE8, 0)
-priceAfter = quoteSharePriceBps(roundId, direction, currentPriceE8, amount)
+priceAfter = quoteSharePriceBps(roundId, direction, currentPriceE8, received)
 averageSharePriceBps = (priceBefore + priceAfter) / 2
 ```
 
 Minted shares:
 
 ```text
-shares = amount * 10000 / averageSharePriceBps
+shares = received * 10000 / averageSharePriceBps
 ```
 
 The bettor supplies `minSharesOut`. The bet reverts if:
 
 ```text
+amount < MIN_BET_AMOUNT
+received < MIN_BET_AMOUNT
 shares < minSharesOut
 ```
 

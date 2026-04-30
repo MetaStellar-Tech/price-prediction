@@ -7,14 +7,19 @@ Last updated: 2026-04-30
 - [x] Foundry project structure added.
 - [x] `PricePredictionMarket` implemented with admin, operator, fee recipient, one-active-round state machine.
 - [x] ERC20 USDC-style staking flow implemented.
+- [x] Bet amount floor implemented: each bet must deliver at least `1 USDC` (`1e6` USDC-style token
+  units) to the contract.
 - [x] Hyperliquid CoreRead BTC perp oracle price read implemented through the native L1Read precompile address.
 - [x] Dynamic share pricing implemented with time premium, trend adjustment, pool imbalance, clamps, and average execution slippage.
+- [x] Default pricing parameters dampen first-bet, trend, time, and pool-imbalance price movement to
+  reduce ordinary quote-to-submission failures.
 - [x] `minSharesOut` protection implemented.
 - [x] Settlement implemented for Up win, Down win, and draw.
 - [x] No-contest settlement implemented for empty winning-side rounds with full stake refund.
 - [x] Push-based batched cleanup implemented.
 - [x] Failed cleanup transfers escrow to `pendingPayouts` and can be claimed later.
 - [x] Round-sensitive configs, including fee recipient, snapshot at round start.
+- [x] Betting close is permissionless after `stopBetTime`; early `stopBet` still reverts.
 - [x] Settlement is permissionless after deadline.
 - [x] Deterministic unit tests implemented.
 - [x] Simulation test implemented to search sampled two-sided lock-profit combinations.
@@ -70,7 +75,7 @@ Last updated: 2026-04-30
   `SlippageExceeded` failures to user-readable messages.
 - [x] Frontend bet ticket shows live `previewBet` execution details, including estimated shares,
   minimum shares, average price, before/after price, and first-bet price impact; bet submission
-  refreshes the quote immediately before sending and defaults to a 1 USDC stake with 5% slippage.
+  refreshes the quote immediately before sending and defaults to a 1 USDC stake with 10% slippage.
 - [x] Frontend bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas
   limits for market writes, and maps RPC rate-limit failures to retry guidance instead of showing
   raw viem contract-call traces.
@@ -112,7 +117,7 @@ Last updated: 2026-04-30
   production market maker, does not seek profit, and keeps generated private keys only in an ignored
   local env file. Harness transaction sends default to async mode with explicit gas settings to
   avoid aborting on transient Hyperliquid RPC receipt-polling block-height errors. The harness also
-  avoids submitting bets too close to `stopBetTime`, continues watching if a bet races an operator
+  avoids submitting bets too close to `stopBetTime`, continues watching if a bet races a round
   state transition, and uses low-latency event-log polling by default because the public
   Hyperliquid EVM RPC does not expose websocket subscriptions. Third-party websocket RPCs remain
   supported by setting `WS_RPC_URL`.

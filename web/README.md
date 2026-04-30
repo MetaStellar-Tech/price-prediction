@@ -63,7 +63,7 @@ npm run build
   every 3 seconds, user bet history every 5 seconds, Hyperliquid mids every 3 seconds, and countdown
   labels re-render locally every second.
 - Bet actions are disabled outside the active betting window, show a live `previewBet` quote with
-  first-bet price impact included, default to a 1 USDC stake and 5% slippage limit, refresh the
+  first-bet price impact included, default to a 1 USDC stake and 10% slippage limit, refresh the
   quote immediately before submission, and decode market custom errors into user-readable messages.
 - Bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas limits for
   market writes, and maps RPC rate-limit failures to retry guidance to avoid surfacing raw viem

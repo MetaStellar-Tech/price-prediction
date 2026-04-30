@@ -2,10 +2,12 @@
 
 ## Non-Negotiable Invariants
 
-- Only `operator` may start and stop rounds.
+- Only `operator` may start rounds.
+- Any wallet may stop betting after `stopBetTime`; no wallet may stop betting before `stopBetTime`.
 - Only `admin` may update roles and protocol parameters.
 - A new round cannot start until the previous round is fully cleaned.
-- Bets are accepted only during `Betting` and before `stopBetTime`.
+- Bets are accepted only during `Betting`, before `stopBetTime`, and when the actual received stake
+  amount is at least `1 USDC` (`1e6` USDC-style token units).
 - Settlement is permissionless after `settleTime`.
 - Settlement reads final BTC price once and stores the result.
 - Fees are charged only from the losing pool.
@@ -48,6 +50,8 @@ Integer rounding can leave residual dust in the contract. V1 does not expose an 
 
 - `feeBps` is capped at `2000`.
 - `stopBetOffset` must be lower than `roundDuration`.
+- The default timing is a `120 seconds` betting window and a `130 seconds` round duration, leaving a
+  `10 seconds` buffer between betting close and settlement.
 - Share prices are clamped by configured min and max bps.
 - BTC `szDecimals` must be at most `18`.
 - Round-sensitive config, including `feeRecipient`, is snapshotted at round start. Admin updates apply to later rounds.

@@ -56,12 +56,12 @@ contract PricePredictionMarketTest is Test {
             ,
         ) = market.rounds(1);
         assertEq(uint256(state), uint256(PricePredictionMarket.RoundState.Betting));
-        assertEq(stopBetTime, startTime + 50);
-        assertEq(settleTime, startTime + 60);
+        assertEq(stopBetTime, startTime + 120);
+        assertEq(settleTime, startTime + 130);
         assertEq(basePriceE8, 100_000e8);
     }
 
-    function testOnlyOperatorCanStartAndStopButAnyoneCanSettleAfterDeadline() public {
+    function testOnlyOperatorCanStartButAnyoneCanStopAndSettleAfterDeadlines() public {
         _mockPrice(100_000e8);
 
         vm.expectRevert(PricePredictionMarket.Unauthorized.selector);
@@ -70,14 +70,14 @@ contract PricePredictionMarketTest is Test {
         vm.prank(operator);
         market.startRound();
 
-        _warpToElapsed(1, 50);
-        vm.expectRevert(PricePredictionMarket.Unauthorized.selector);
+        vm.expectRevert(PricePredictionMarket.StopBetTooEarly.selector);
         market.stopBet();
 
-        vm.prank(operator);
+        _warpToElapsed(1, 120);
+        vm.prank(alice);
         market.stopBet();
 
-        _warpToElapsed(1, 60);
+        _warpToElapsed(1, 130);
         _mockPrice(100_100e8);
         vm.prank(alice);
         market.settle();
@@ -94,7 +94,7 @@ contract PricePredictionMarketTest is Test {
         _bet(alice, PricePredictionMarket.Direction.Up, 10e6, 0);
         _bet(bob, PricePredictionMarket.Direction.Down, 10e6, 0);
 
-        _warpToElapsed(1, 60);
+        _warpToElapsed(1, 130);
         _mockPrice(100_100e8);
         vm.prank(carol);
         market.settle();
@@ -140,6 +140,8 @@ contract PricePredictionMarketTest is Test {
     }
 
     function testBetUsesTrendTimePoolAndSlippagePricing() public {
+        vm.prank(admin);
+        market.setTimingConfig(60, 50);
         _startAtPrice(100_000e8);
 
         _mockPrice(101_000e8);
@@ -152,8 +154,8 @@ contract PricePredictionMarketTest is Test {
         uint256 downPrice =
             market.quoteSharePriceBps(1, PricePredictionMarket.Direction.Down, 101_000e8, 0);
 
-        assertEq(upPrice, 16_500);
-        assertEq(downPrice, 8_500);
+        assertEq(upPrice, 11_800);
+        assertEq(downPrice, 9_700);
 
         (,, uint256 smallAverage,) = market.previewBet(PricePredictionMarket.Direction.Down, 10e6);
         (,, uint256 largeAverage, uint256 largeShares) =
@@ -161,7 +163,20 @@ contract PricePredictionMarketTest is Test {
 
         assertGt(largeAverage, smallAverage);
         assertLt(largeShares, (500e6 * 10_000) / smallAverage);
-        assertApproxEqAbs(smallAverage, 8_547, 1);
+        assertApproxEqAbs(smallAverage, 9_712, 1);
+    }
+
+    function testDefaultPricingDampensFirstBetPriceImpact() public {
+        _startAtPrice(100_000e8);
+        _mockPrice(100_000e8);
+
+        (uint256 beforePrice, uint256 afterPrice, uint256 averagePrice, uint256 shares) =
+            market.previewBet(PricePredictionMarket.Direction.Up, 1e6);
+
+        assertEq(beforePrice, 10_000);
+        assertEq(afterPrice, 11_500);
+        assertEq(averagePrice, 10_750);
+        assertEq(shares, 930_232);
     }
 
     function testConfigUpdatesApplyOnlyToNextRound() public {
@@ -190,13 +205,13 @@ contract PricePredictionMarketTest is Test {
             market.quoteSharePriceBps(1, PricePredictionMarket.Direction.Up, 100_000e8, 0);
         assertEq(activeRoundPrice, 10_000);
 
-        _warpToElapsed(1, 50);
+        _warpToElapsed(1, 120);
         vm.prank(operator);
         market.stopBet();
 
         _mockPriceForIndex(0, 5, 101_000e8);
         _mockPriceForIndex(1, 4, 99_000e8);
-        _warpToElapsed(1, 60);
+        _warpToElapsed(1, 130);
         market.settle();
         market.cleanup(1, 10);
 
@@ -223,21 +238,38 @@ contract PricePredictionMarketTest is Test {
         _bet(alice, PricePredictionMarket.Direction.Up, 10e6, shares + 1);
     }
 
+    function testBetRequiresAtLeastOneUsdcReceived() public {
+        _startAtPrice(100_000e8);
+        _mockPrice(100_000e8);
+
+        vm.expectRevert(PricePredictionMarket.InvalidAmount.selector);
+        _bet(alice, PricePredictionMarket.Direction.Up, 1e6 - 1, 0);
+
+        token.setTransferFeeBps(1_000);
+        vm.expectRevert(PricePredictionMarket.InvalidAmount.selector);
+        _bet(alice, PricePredictionMarket.Direction.Up, 1e6, 0);
+
+        vm.expectRevert(PricePredictionMarket.InvalidAmount.selector);
+        market.previewBet(PricePredictionMarket.Direction.Up, 1e6 - 1);
+
+        _bet(alice, PricePredictionMarket.Direction.Up, 2e6, 0);
+    }
+
     function testBettingWindowAndSettleTiming() public {
         _startAtPrice(100_000e8);
 
-        _warpToElapsed(1, 49);
+        _warpToElapsed(1, 119);
         _mockPrice(100_200e8);
         _bet(alice, PricePredictionMarket.Direction.Up, 10e6, 0);
 
-        _warpToElapsed(1, 50);
+        _warpToElapsed(1, 120);
         vm.expectRevert(PricePredictionMarket.BetWindowClosed.selector);
         _bet(bob, PricePredictionMarket.Direction.Down, 10e6, 0);
 
-        vm.prank(operator);
+        vm.prank(carol);
         market.stopBet();
 
-        _warpToElapsed(1, 59);
+        _warpToElapsed(1, 129);
         vm.expectRevert(PricePredictionMarket.SettleTooEarly.selector);
         vm.prank(operator);
         market.settle();
@@ -250,11 +282,11 @@ contract PricePredictionMarketTest is Test {
         _bet(bob, PricePredictionMarket.Direction.Down, 80e6, 0);
         _bet(carol, PricePredictionMarket.Direction.Up, 40e6, 0);
 
-        _warpToElapsed(1, 50);
-        vm.prank(operator);
+        _warpToElapsed(1, 120);
+        vm.prank(carol);
         market.stopBet();
 
-        _warpToElapsed(1, 60);
+        _warpToElapsed(1, 130);
         _mockPrice(100_500e8);
         vm.prank(operator);
         market.settle();
@@ -282,11 +314,11 @@ contract PricePredictionMarketTest is Test {
         _bet(alice, PricePredictionMarket.Direction.Up, 100e6, 0);
         _bet(bob, PricePredictionMarket.Direction.Down, 100e6, 0);
 
-        _warpToElapsed(1, 50);
+        _warpToElapsed(1, 120);
         vm.prank(operator);
         market.stopBet();
 
-        _warpToElapsed(1, 60);
+        _warpToElapsed(1, 130);
         _mockPrice(99_500e8);
         vm.prank(operator);
         market.settle();
@@ -301,10 +333,10 @@ contract PricePredictionMarketTest is Test {
         _bet(alice, PricePredictionMarket.Direction.Up, 20e6, 0);
         _bet(bob, PricePredictionMarket.Direction.Down, 30e6, 0);
 
-        _warpToElapsed(2, 50);
+        _warpToElapsed(2, 120);
         vm.prank(operator);
         market.stopBet();
-        _warpToElapsed(2, 60);
+        _warpToElapsed(2, 130);
         _mockPrice(100_000e8);
         vm.prank(operator);
         market.settle();
@@ -320,7 +352,7 @@ contract PricePredictionMarketTest is Test {
         uint256 aliceBefore = token.balanceOf(alice);
         _bet(alice, PricePredictionMarket.Direction.Up, 100e6, 0);
 
-        _warpToElapsed(1, 60);
+        _warpToElapsed(1, 130);
         _mockPrice(99_000e8);
         market.settle();
         market.cleanup(1, 10);
@@ -342,7 +374,7 @@ contract PricePredictionMarketTest is Test {
 
         (,,,,,,, uint256 upPool,, uint256 upShares,,,,) = market.rounds(1);
         assertEq(upPool, 90e6);
-        assertEq(upShares, 69_230_769);
+        assertEq(upShares, 83_720_930);
         assertEq(token.balanceOf(address(market)), 90e6);
     }
 
@@ -352,7 +384,7 @@ contract PricePredictionMarketTest is Test {
         _bet(alice, PricePredictionMarket.Direction.Up, 100e6, 0);
         _bet(bob, PricePredictionMarket.Direction.Down, 100e6, 0);
 
-        _warpToElapsed(1, 60);
+        _warpToElapsed(1, 130);
         _mockPrice(101_000e8);
         market.settle();
 
@@ -371,6 +403,8 @@ contract PricePredictionMarketTest is Test {
     }
 
     function testClampBounds() public {
+        vm.prank(admin);
+        market.setTimingConfig(60, 50);
         _startAtPrice(100_000e8);
         _warpToElapsed(1, 49);
 
@@ -379,12 +413,12 @@ contract PricePredictionMarketTest is Test {
         uint256 downPrice =
             market.quoteSharePriceBps(1, PricePredictionMarket.Direction.Down, 200_000e8, 0);
 
-        assertEq(upPrice, 18_083);
-        assertEq(downPrice, 10_083);
+        assertEq(upPrice, 12_725);
+        assertEq(downPrice, 9_725);
 
         _bet(alice, PricePredictionMarket.Direction.Up, 9_000e6, 0);
         upPrice = market.quoteSharePriceBps(1, PricePredictionMarket.Direction.Up, 200_000e8, 0);
-        assertEq(upPrice, 24_083);
+        assertEq(upPrice, 14_225);
     }
 
     function testSimulationSearchesForTwoSidedLockProfit() public {
@@ -394,7 +428,7 @@ contract PricePredictionMarketTest is Test {
 
             uint256 upBackground = ((seed * 37) % 900 + 50) * 1e6;
             uint256 downBackground = ((seed * 71) % 900 + 50) * 1e6;
-            uint256 elapsed = (seed * 13) % 49;
+            uint256 elapsed = (seed * 13) % 119;
             uint256 currentPrice = (98_000 + ((seed * 211) % 4_000)) * 1e8;
             uint256 upBet = ((seed * 17) % 400 + 10) * 1e6;
             uint256 downBet = ((seed * 29) % 400 + 10) * 1e6;

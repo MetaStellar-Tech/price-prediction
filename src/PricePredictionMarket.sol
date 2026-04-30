@@ -9,6 +9,7 @@ contract PricePredictionMarket {
     using SafeERC20 for IERC20;
 
     uint256 public constant BPS = 10_000;
+    uint256 public constant MIN_BET_AMOUNT = 1e6;
 
     enum Direction {
         Up,
@@ -73,8 +74,8 @@ contract PricePredictionMarket {
 
     uint32 public btcPerpIndex;
     uint8 public btcSzDecimals;
-    uint256 public roundDuration = 60 seconds;
-    uint256 public stopBetOffset = 50 seconds;
+    uint256 public roundDuration = 130 seconds;
+    uint256 public stopBetOffset = 120 seconds;
     uint256 public feeBps = 500;
     uint256 public currentRoundId;
     PricingConfig public pricingConfig;
@@ -170,12 +171,12 @@ contract PricePredictionMarket {
         btcSzDecimals = btcSzDecimals_;
         pricingConfig = PricingConfig({
             basePriceBps: 10_000,
-            maxTimePremiumBps: 5_000,
-            maxTrendAdjustmentBps: 4_000,
+            maxTimePremiumBps: 1_500,
+            maxTrendAdjustmentBps: 1_500,
             trendMoveCapBps: 1_000,
-            maxPoolImbalanceAdjustmentBps: 6_000,
+            maxPoolImbalanceAdjustmentBps: 1_500,
             minSharePriceBps: 2_000,
-            maxSharePriceBps: 30_000
+            maxSharePriceBps: 20_000
         });
     }
 
@@ -223,7 +224,7 @@ contract PricePredictionMarket {
         nonReentrant
         returns (uint256 shares)
     {
-        if (amount == 0) revert InvalidAmount();
+        if (amount < MIN_BET_AMOUNT) revert InvalidAmount();
 
         uint256 roundId = currentRoundId;
         Round storage round = rounds[roundId];
@@ -233,7 +234,7 @@ contract PricePredictionMarket {
         uint256 balanceBefore = stakeToken.balanceOf(address(this));
         stakeToken.safeTransferFrom(msg.sender, address(this), amount);
         uint256 received = stakeToken.balanceOf(address(this)) - balanceBefore;
-        if (received == 0) revert InvalidAmount();
+        if (received < MIN_BET_AMOUNT) revert InvalidAmount();
 
         uint256 currentPriceE8 =
             _readBtcPriceE8(roundBtcPerpIndexes[roundId], roundBtcSzDecimals[roundId]);
@@ -265,7 +266,7 @@ contract PricePredictionMarket {
         emit BetPlaced(roundId, msg.sender, direction, received, shares, averagePrice);
     }
 
-    function stopBet() external onlyOperator nonReentrant {
+    function stopBet() external nonReentrant {
         Round storage round = rounds[currentRoundId];
         if (round.state != RoundState.Betting) revert InvalidState();
         if (block.timestamp < round.stopBetTime) revert StopBetTooEarly();
@@ -392,7 +393,7 @@ contract PricePredictionMarket {
             uint256 shares
         )
     {
-        if (amount == 0) revert InvalidAmount();
+        if (amount < MIN_BET_AMOUNT) revert InvalidAmount();
         uint256 roundId = currentRoundId;
         Round storage round = rounds[roundId];
         if (round.state != RoundState.Betting) revert InvalidState();

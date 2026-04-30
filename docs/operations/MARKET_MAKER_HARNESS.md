@@ -110,7 +110,7 @@ interaction flowing at low cost:
 - It uses mostly `1-3 USDC` bets, only allowing larger bets when one side is severely underfunded.
 - It calls `previewBet` before `bet` and applies a conservative `minSharesOut`.
 - It skips new bets when the chain timestamp is within `MAKER_BET_DEADLINE_BUFFER_SECONDS`
-  seconds of `stopBetTime`, defaulting to `8`, so operator-driven `stopBet` races do not stop the
+  seconds of `stopBetTime`, defaulting to `8`, so permissionless `stopBet` races do not stop the
   loop.
 - If a submitted maker bet still races a state transition and reverts with `InvalidState` or
   `BetWindowClosed`, the harness logs the stale-window result and keeps watching later rounds.

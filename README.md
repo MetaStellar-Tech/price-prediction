@@ -12,8 +12,10 @@ frontend.
 ## V1 Protocol
 
 - One active prediction round at a time.
-- Operator starts a round, stops betting, and settles.
+- Operator starts a round. Anyone can stop betting after the betting deadline and settle after the
+  settlement deadline.
 - Users bet an ERC20 USDC-style stake token on `Up` or `Down`.
+- Each bet must deliver at least `1 USDC` worth of stake token units to the contract.
 - The contract mints accounting shares using dynamic odds pricing.
 - Winners receive pro-rata payouts by winning shares.
 - Protocol fee is charged only from the losing pool.
@@ -40,7 +42,9 @@ averageSharePriceBps = (priceBefore + priceAfter) / 2
 shares = amount * 10000 / averageSharePriceBps
 ```
 
-This makes late betting, trend-following, and crowded-side betting more expensive while adding slippage for large orders.
+This makes late betting, trend-following, and crowded-side betting more expensive while adding
+bounded slippage for large orders. V1 defaults are intentionally dampened so ordinary
+quote-to-submission drift is less likely to revert user bets.
 
 The complete canonical algorithm is documented in `docs/protocol/ALGORITHMS.md`.
 
@@ -67,7 +71,9 @@ The constructor stores:
 
 The current fallback boundary remains documented as `CoreReadAttestor`, but V1 does not implement off-chain attestor submission.
 
-CoreRead, fee recipient, fee, timing, and pricing parameters are snapshotted when a round starts. Admin updates apply to the next round.
+CoreRead, fee recipient, fee, timing, and pricing parameters are snapshotted when a round starts.
+The default betting window is `120 seconds`, followed by a `10 seconds` settlement buffer. Admin
+updates apply to the next round.
 
 ## Verification
 

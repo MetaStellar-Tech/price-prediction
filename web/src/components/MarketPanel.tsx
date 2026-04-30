@@ -51,7 +51,7 @@ function marketActionErrorMessage(error: unknown) {
   return message || "Market action failed.";
 }
 
-const SLIPPAGE_OPTIONS_BPS = [DEFAULT_SLIPPAGE_BPS, 300, 100] as const;
+const SLIPPAGE_OPTIONS_BPS = [DEFAULT_SLIPPAGE_BPS, 500, 300] as const;
 
 function formatSharePriceBps(value?: bigint) {
   if (value === undefined) return "--";

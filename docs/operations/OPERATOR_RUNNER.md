@@ -77,6 +77,7 @@ Each `tick` reads the active round and performs at most one state transition:
 - `Settled`: call `cleanup(roundId, CLEANUP_BATCH_SIZE)`.
 - `Cleaned`: call `startRound` for the next round.
 
-The runner does not weaken contract permissions. `startRound` and `stopBet` still require the
-configured on-chain operator. `settle` and `cleanup` remain permissionless in the contract, but the
-runner signs them with the operator key for operational consistency.
+The runner does not weaken contract permissions. `startRound` still requires the configured
+on-chain operator. `stopBet`, `settle`, and `cleanup` are permissionless in the contract after their
+respective timing/state gates, but the runner signs them with the operator key for operational
+consistency.
