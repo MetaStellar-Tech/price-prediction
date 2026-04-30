@@ -52,6 +52,9 @@ Last updated: 2026-04-30
 - [x] Frontend HYPE top-up orders format spot order price, spot order size, and follow-up
   Core-to-EVM HYPE transfer amount with Hyperliquid SDK tick/lot-size helpers instead of
   hard-coding frontend precision.
+- [x] Frontend market state refresh cadence tightened: core market reads poll every 2 seconds,
+  market bet events every 3 seconds, user bet history every 5 seconds, Hyperliquid mids every 3
+  seconds, and visible round countdowns re-render locally every second.
 
 ## Verification
 

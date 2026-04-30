@@ -60,6 +60,10 @@ const HYPERLIQUID_AGENT_KEY_PREFIX = "price-prediction:hyperliquid-agent:";
 const HYPERLIQUID_AGENT_NAME = "PricePredict";
 const HYPERLIQUID_AGENT_VALID_UNTIL_SKEW_MS = 60_000;
 const HYPERLIQUID_AGENT_VALID_FOR_MS = 90 * 24 * 60 * 60 * 1000;
+const MARKET_READ_REFETCH_MS = 2_000;
+const MARKET_EVENTS_REFETCH_MS = 3_000;
+const USER_EVENTS_REFETCH_MS = 5_000;
+const MIDS_REFETCH_MS = 3_000;
 
 function exchangeApiBaseUrl() {
   return config.hyperliquidExchangeUrl.replace(/\/exchange\/?$/, "");
@@ -228,7 +232,7 @@ export function useMarketState(address?: Address) {
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "currentRoundId",
-    query: { refetchInterval: 10_000 },
+    query: { refetchInterval: MARKET_READ_REFETCH_MS },
   });
 
   const roundId = currentRoundId.data ?? 0n;
@@ -239,27 +243,27 @@ export function useMarketState(address?: Address) {
     abi: marketAbi,
     functionName: "rounds",
     args: [roundId],
-    query: { enabled: enabledRound, refetchInterval: 10_000 },
+    query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
   });
   const participantCountRead = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "participantCount",
     args: [roundId],
-    query: { enabled: enabledRound, refetchInterval: 10_000 },
+    query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
   });
   const latestBtcPriceRead = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "latestBtcPriceE8",
-    query: { enabled: enabledRound, refetchInterval: 10_000 },
+    query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
   });
   const positionRead = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "positions",
     args: [roundId, address ?? "0x0000000000000000000000000000000000000000"],
-    query: { enabled: enabledRound && Boolean(address), refetchInterval: 10_000 },
+    query: { enabled: enabledRound && Boolean(address), refetchInterval: MARKET_READ_REFETCH_MS },
   });
 
   const events = useQuery({
@@ -276,7 +280,7 @@ export function useMarketState(address?: Address) {
       });
     },
     enabled: Boolean(publicClient && enabledRound),
-    refetchInterval: 12_000,
+    refetchInterval: MARKET_EVENTS_REFETCH_MS,
   });
 
   const userEvents = useQuery({
@@ -293,7 +297,7 @@ export function useMarketState(address?: Address) {
       });
     },
     enabled: Boolean(publicClient && address),
-    refetchInterval: 20_000,
+    refetchInterval: USER_EVENTS_REFETCH_MS,
   });
 
   const metrics = useMemo(() => summarizeBetEvents(events.data), [events.data]);
@@ -348,7 +352,7 @@ export function useMids() {
   return useQuery({
     queryKey: ["hyperliquid-mids"],
     queryFn: getAllMids,
-    refetchInterval: 10_000,
+    refetchInterval: MIDS_REFETCH_MS,
   });
 }
 

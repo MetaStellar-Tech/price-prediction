@@ -58,6 +58,9 @@ npm run build
   flow without requiring users to recover old browser storage or visit Hyperliquid settings.
 - HYPE spot order prices, order sizes, and follow-up Core-to-HyperEVM HYPE transfer amounts use the
   Hyperliquid SDK tick/lot-size formatters rather than fixed frontend precision.
+- Market state uses a fast UI cadence for active rounds: contract state every 2 seconds, bet events
+  every 3 seconds, user bet history every 5 seconds, Hyperliquid mids every 3 seconds, and countdown
+  labels re-render locally every second.
 - Contract writes are submitted through the connected EVM wallet.
 - Hyperliquid Core recharge actions are shown as explicit action previews before submission.
   Core-to-HyperEVM linked-token transfers use Hyperliquid `sendAsset`, not legacy `spotSend`, so

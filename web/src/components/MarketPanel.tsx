@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, ArrowDown, ArrowUp, Coins, Loader2, Scale, Timer } from "lucide-react";
 import { formatUnits } from "viem";
 import { DEFAULT_SLIPPAGE_BPS } from "../lib/config";
@@ -27,6 +27,11 @@ export function MarketPanel() {
   const [direction, setDirection] = useState<0 | 1>(0);
   const [amount, setAmount] = useState("10");
   const [message, setMessage] = useState<string | null>(null);
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockTick((tick) => tick + 1), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const refetchAfterTx = useCallback(() => {
     account.refetch();
     market.refetch();
