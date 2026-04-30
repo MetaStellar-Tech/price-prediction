@@ -29,6 +29,8 @@ Last updated: 2026-04-30
   `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`.
 - [x] Repo-local operator runner added for `status`, `set-operator`, one-shot `tick`, and
   continuous `loop` maintenance.
+- [x] Operator runner sends now use a configurable `OPERATOR_GAS_PRICE`, defaulting to `1gwei`, so
+  routine maintenance transactions do not rely on potentially higher RPC fee suggestions.
 - [x] Repo-local Hyperliquid live market-maker harness added for reusable maker wallets, funding,
   approvals, balanced low-cost betting, post-cleanup rebalancing, and review report generation.
 - [x] Live market-maker harness skips near-expiry betting windows, parses `previewBet` shares across
@@ -73,6 +75,7 @@ Last updated: 2026-04-30
 - [x] `forge fmt --check`
 - [x] `forge build`
 - [x] `forge test -vvv`
+- [x] `bash -n ops/operator.sh`
 - [x] `bash -n integration/hyperliquid-live-harness/market-maker.sh`
 - [x] Embedded market-maker websocket listener JavaScript syntax check with `node --check`
 - [x] `web`: `npm run typecheck`

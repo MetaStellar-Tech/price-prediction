@@ -29,10 +29,17 @@ Required to advance rounds:
 OPERATOR_PRIVATE_KEY=
 CLEANUP_BATCH_SIZE=50
 OPERATOR_TICK_SECONDS=15
+OPERATOR_GAS_PRICE=1gwei
+OPERATOR_PRIORITY_GAS_PRICE=
 ```
 
 `OPERATOR_ADDRESS` can be different from `ADMIN`. The admin only needs to call `set-operator`.
 Routine market maintenance should use `OPERATOR_PRIVATE_KEY`.
+
+`OPERATOR_GAS_PRICE` is passed to `cast send --gas-price` for every runner transaction. It defaults
+to `1gwei` to keep routine operator maintenance costs low. Increase it if HyperEVM rejects or
+delays transactions during a congested period, or set it to an empty value to let `cast` and the RPC
+estimate fees automatically. `OPERATOR_PRIORITY_GAS_PRICE` is optional and is only passed when set.
 
 ## Commands
 

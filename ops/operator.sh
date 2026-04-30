@@ -20,6 +20,7 @@ RPC_URL="${RPC_URL:-https://rpc.hyperliquid.xyz/evm}"
 CHAIN_ID="${CHAIN_ID:-999}"
 CLEANUP_BATCH_SIZE="${CLEANUP_BATCH_SIZE:-50}"
 OPERATOR_TICK_SECONDS="${OPERATOR_TICK_SECONDS:-15}"
+OPERATOR_GAS_PRICE="${OPERATOR_GAS_PRICE-1gwei}"
 
 require_env() {
   local name="$1"
@@ -36,10 +37,23 @@ call_market() {
 send_market() {
   local private_key="$1"
   shift
+
+  local send_args=(
+    --rpc-url "$RPC_URL"
+    --chain "$CHAIN_ID"
+    --private-key "$private_key"
+  )
+
+  if [ -n "$OPERATOR_GAS_PRICE" ]; then
+    send_args+=(--gas-price "$OPERATOR_GAS_PRICE")
+  fi
+
+  if [ -n "${OPERATOR_PRIORITY_GAS_PRICE:-}" ]; then
+    send_args+=(--priority-gas-price "$OPERATOR_PRIORITY_GAS_PRICE")
+  fi
+
   cast send \
-    --rpc-url "$RPC_URL" \
-    --chain "$CHAIN_ID" \
-    --private-key "$private_key" \
+    "${send_args[@]}" \
     "$MARKET_ADDRESS" \
     "$@"
 }
