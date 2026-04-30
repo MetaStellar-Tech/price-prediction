@@ -22,6 +22,7 @@ Supported variables:
 
 ```text
 VITE_HYPEREVM_RPC_URL=https://rpc.hyperliquid.xyz/evm
+VITE_HYPEREVM_WS_URL=
 VITE_HYPERLIQUID_INFO_URL=https://api.hyperliquid.xyz/info
 VITE_HYPERLIQUID_EXCHANGE_URL=https://api.hyperliquid.xyz/exchange
 VITE_MARKET_ADDRESS=0x406661e7AeF968441d53bc9557be3a8FAa92A67B
@@ -64,9 +65,21 @@ npm run build
 - Bet actions are disabled outside the active betting window, show a live `previewBet` quote with
   first-bet price impact included, default to a 1 USDC stake and 5% slippage limit, refresh the
   quote immediately before submission, and decode market custom errors into user-readable messages.
+- Bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas limits for
+  market writes, and maps RPC rate-limit failures to retry guidance to avoid surfacing raw viem
+  contract-call traces to users.
 - Contract writes are submitted through the connected EVM wallet.
 - Hyperliquid Core recharge actions are shown as explicit action previews before submission.
   Core-to-HyperEVM linked-token transfers use Hyperliquid `sendAsset`, not legacy `spotSend`, so
   they work for unified-account wallets.
+- HyperEVM reads can use an optional `VITE_HYPEREVM_WS_URL` when the selected RPC provider exposes
+  a WebSocket endpoint. The app falls back to `VITE_HYPEREVM_RPC_URL` HTTP transport, and contract
+  state remains the on-chain source of truth.
+- Market write actions show a top-right transaction notification immediately after wallet
+  submission, update the notification after the HyperEVM receipt succeeds or fails, and then dismiss
+  it automatically.
+- User bet history shows recent bet amount, round number, settled result, estimated payout, and ROI
+  by combining `BetPlaced` logs with `rounds(roundId)` reads. Pending rounds show their current
+  round state until settlement.
 - Users should review every wallet signature and exchange action, especially HYPE spot purchases
   and Core-to-EVM transfers.

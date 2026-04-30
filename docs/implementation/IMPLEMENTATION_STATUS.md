@@ -71,6 +71,16 @@ Last updated: 2026-04-30
 - [x] Frontend bet ticket shows live `previewBet` execution details, including estimated shares,
   minimum shares, average price, before/after price, and first-bet price impact; bet submission
   refreshes the quote immediately before sending and defaults to a 1 USDC stake with 5% slippage.
+- [x] Frontend bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas
+  limits for market writes, and maps RPC rate-limit failures to retry guidance instead of showing
+  raw viem contract-call traces.
+- [x] Frontend market writes show a top-right transaction notification after wallet submission,
+  update it when the HyperEVM receipt succeeds or fails, and dismiss it automatically after the
+  final state is shown.
+- [x] Frontend supports an optional HyperEVM WebSocket RPC URL for wagmi/viem watch reads while
+  keeping HTTP RPC as fallback.
+- [x] Frontend bet history shows recent bet amount, round number, settled result, estimated payout,
+  and ROI by joining user `BetPlaced` logs with `rounds(roundId)` reads.
 
 ## Verification
 
@@ -92,6 +102,8 @@ Last updated: 2026-04-30
   harness.
 - `web/` is the explicit user-facing frontend exception. It is a pure frontend app for Vercel and
   does not introduce a backend, private-key custody, or protocol harness into the Foundry path.
+  Frontend realtime reads may use a configured HyperEVM WebSocket RPC endpoint, with HTTP RPC kept
+  as fallback.
 - Deployment remains Foundry-first and uses `.env` plus `script/deploy.sh`; generated `broadcast/`
   artifacts are not committed. The default deployment target is Hyperliquid EVM mainnet.
 - Operations remain Foundry/cast based and repo-local. The operator runner is not a production Go

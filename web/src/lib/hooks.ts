@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExchangeClient, HttpTransport } from "@nktkas/hyperliquid";
 import type { AbstractWallet } from "@nktkas/hyperliquid/signing";
@@ -22,7 +22,13 @@ import {
   useWriteContract,
 } from "wagmi";
 import { erc20Abi, marketAbi } from "./abi";
-import { config } from "./config";
+import {
+  APPROVE_GAS_LIMIT,
+  BET_GAS_LIMIT,
+  CLAIM_PAYOUT_GAS_LIMIT,
+  SETTLE_GAS_LIMIT,
+  config,
+} from "./config";
 import {
   getAllMids,
   getExtraAgents,
@@ -39,6 +45,17 @@ import {
 export const roundStateLabels = ["None", "Betting", "Betting closed", "Settled", "Cleaned"];
 export const outcomeLabels = ["None", "Up", "Down", "Draw", "No contest"];
 export const directionLabels = ["Up", "Down"];
+
+type MarketRound = NonNullable<ReturnType<typeof useMarketState>["round"]>;
+type BetEvent = GetContractEventsReturnType<typeof marketAbi, "BetPlaced">[number];
+
+export type UserBetHistoryRow = {
+  event: BetEvent;
+  round?: MarketRound;
+  payout?: bigint;
+  roiBps?: number;
+  statusLabel: string;
+};
 
 type HyperliquidTypedDataDomain = {
   name: string;
@@ -331,6 +348,106 @@ export function useMarketState(address?: Address) {
   };
 }
 
+export function useUserBetHistory(address?: Address) {
+  const { decimals } = useTokenMeta();
+  const publicClient = usePublicClient();
+  const block = useBlockNumber({ watch: true });
+  const userEvents = useQuery({
+    queryKey: ["user-bet-history-events", address, block.data?.toString()],
+    queryFn: async () => {
+      if (!publicClient || !address) return [];
+      return publicClient.getContractEvents({
+        address: config.marketAddress,
+        abi: marketAbi,
+        eventName: "BetPlaced",
+        args: { user: address },
+        fromBlock: 33_813_039n,
+        toBlock: "latest",
+      });
+    },
+    enabled: Boolean(publicClient && address),
+    refetchInterval: USER_EVENTS_REFETCH_MS,
+  });
+
+  const roundIds = useMemo(() => {
+    const unique = new Map<string, bigint>();
+    for (const event of userEvents.data ?? []) {
+      const roundId = event.args.roundId;
+      if (roundId !== undefined) unique.set(roundId.toString(), roundId);
+    }
+    return [...unique.values()];
+  }, [userEvents.data]);
+
+  const roundReads = useReadContracts({
+    contracts: roundIds.map((roundId) => ({
+      address: config.marketAddress,
+      abi: marketAbi,
+      functionName: "rounds",
+      args: [roundId],
+    })),
+    query: { enabled: roundIds.length > 0, refetchInterval: USER_EVENTS_REFETCH_MS },
+  });
+
+  const roundsById = useMemo(() => {
+    const rounds = new Map<string, MarketRound>();
+    roundIds.forEach((roundId, index) => {
+      const round = roundReads.data?.[index]?.result as MarketRound | undefined;
+      if (round) rounds.set(roundId.toString(), round);
+    });
+    return rounds;
+  }, [roundIds, roundReads.data]);
+
+  const rows = useMemo<UserBetHistoryRow[]>(() => {
+    return [...(userEvents.data ?? [])]
+      .reverse()
+      .map((event) => {
+        const amount = event.args.amount ?? 0n;
+        const shares = event.args.shares ?? 0n;
+        const direction = Number(event.args.direction ?? 0);
+        const round = event.args.roundId ? roundsById.get(event.args.roundId.toString()) : undefined;
+        const state = Number(round?.[0] ?? 0);
+        const outcome = Number(round?.[1] ?? 0);
+        const payout = estimateBetPayout(round, direction, amount, shares);
+        const roiBps = amount > 0n && payout !== undefined ? Number(((payout - amount) * 10_000n) / amount) : undefined;
+        const statusLabel =
+          state >= 3 ? (outcomeLabels[outcome] ?? "Unknown") : roundStateLabels[state] ?? "Pending";
+        return { event, round, payout, roiBps, statusLabel };
+      });
+  }, [roundsById, userEvents.data]);
+
+  return {
+    decimals,
+    rows,
+    isLoading: userEvents.isLoading || roundReads.isLoading,
+    refetch: () => {
+      void userEvents.refetch();
+      void roundReads.refetch();
+    },
+  };
+}
+
+function estimateBetPayout(
+  round: MarketRound | undefined,
+  direction: number,
+  amount: bigint,
+  shares: bigint,
+) {
+  if (!round) return undefined;
+  const state = Number(round[0]);
+  const outcome = Number(round[1]);
+  if (state < 3) return undefined;
+  if (outcome === 3 || outcome === 4) return amount;
+  const upPool = round[7];
+  const downPool = round[8];
+  const upShares = round[9];
+  const downShares = round[10];
+  const feeAmount = round[11];
+  const payoutPool = upPool + downPool - feeAmount;
+  if (outcome === 1 && direction === 0 && upShares > 0n) return (payoutPool * shares) / upShares;
+  if (outcome === 2 && direction === 1 && downShares > 0n) return (payoutPool * shares) / downShares;
+  return 0n;
+}
+
 function summarizeBetEvents(events: GetContractEventsReturnType<typeof marketAbi, "BetPlaced"> | undefined) {
   const wallets = new Set<string>();
   let upCount = 0;
@@ -466,7 +583,8 @@ export function useHyperliquidExchange() {
 export function useBetFlow(onDone: () => void) {
   const token = useTokenMeta();
   const { writeContractAsync, data: hash, isPending, error } = useWriteContract();
-  const receipt = useWaitForTransactionReceipt({ hash });
+  const [submittedHash, setSubmittedHash] = useState<Hash | undefined>();
+  const receipt = useWaitForTransactionReceipt({ hash: submittedHash });
   const handledHash = useRef<Hash | undefined>();
 
   async function placeBet(
@@ -474,6 +592,7 @@ export function useBetFlow(onDone: () => void) {
     amount: string,
     allowance?: bigint,
     slippageBps = 100,
+    quotedShares?: bigint,
   ) {
     const parsed = parseUnits(amount || "0", token.decimals);
     if (parsed <= 0n) throw new Error("Enter a positive amount.");
@@ -483,56 +602,62 @@ export function useBetFlow(onDone: () => void) {
         abi: erc20Abi,
         functionName: "approve",
         args: [config.marketAddress, parsed],
+        gas: APPROVE_GAS_LIMIT,
       });
     }
 
-    const previewClient = await import("wagmi/actions").then((mod) => mod.readContract);
-    const { wagmiConfig } = await import("./wagmi");
-    const preview = await previewClient(wagmiConfig, {
-      address: config.marketAddress,
-      abi: marketAbi,
-      functionName: "previewBet",
-      args: [direction, parsed],
-    });
     const boundedSlippageBps = Math.min(Math.max(Math.trunc(slippageBps), 0), 10_000);
-    const minSharesOut = (preview[3] * BigInt(10_000 - boundedSlippageBps)) / 10_000n;
+    if (quotedShares === undefined) {
+      throw new Error("Quote is temporarily unavailable. Wait a few seconds and refresh the quote.");
+    }
+    const shares = quotedShares;
+    const minSharesOut = (shares * BigInt(10_000 - boundedSlippageBps)) / 10_000n;
 
     const txHash = await writeContractAsync({
       address: config.marketAddress,
       abi: marketAbi,
       functionName: "bet",
       args: [direction, parsed, minSharesOut],
+      gas: BET_GAS_LIMIT,
     });
+    setSubmittedHash(txHash);
     return txHash;
   }
 
   async function settle() {
-    return writeContractAsync({
+    const txHash = await writeContractAsync({
       address: config.marketAddress,
       abi: marketAbi,
       functionName: "settle",
+      gas: SETTLE_GAS_LIMIT,
     });
+    setSubmittedHash(txHash);
+    return txHash;
   }
 
   async function claimPendingPayout() {
-    return writeContractAsync({
+    const txHash = await writeContractAsync({
       address: config.marketAddress,
       abi: marketAbi,
       functionName: "claimPendingPayout",
+      gas: CLAIM_PAYOUT_GAS_LIMIT,
     });
+    setSubmittedHash(txHash);
+    return txHash;
   }
 
   useEffect(() => {
-    if (receipt.isSuccess && hash && handledHash.current !== hash) {
-      handledHash.current = hash;
+    if (receipt.data && submittedHash && handledHash.current !== submittedHash) {
+      handledHash.current = submittedHash;
       onDone();
     }
-  }, [hash, onDone, receipt.isSuccess]);
+  }, [onDone, receipt.data, submittedHash]);
 
   return {
-    hash: hash as Hash | undefined,
+    hash: submittedHash ?? (hash as Hash | undefined),
     isPending: isPending || receipt.isLoading,
     isSuccess: receipt.isSuccess,
+    receipt,
     error,
     placeBet,
     settle,

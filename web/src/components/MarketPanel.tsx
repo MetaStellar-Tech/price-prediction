@@ -29,6 +29,7 @@ import {
   secondsUntil,
 } from "../lib/format";
 import { MetricCard } from "./MetricCard";
+import { TransactionToast, type TransactionToastState } from "./TransactionToast";
 
 function marketActionErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -43,6 +44,9 @@ function marketActionErrorMessage(error: unknown) {
   }
   if (message.includes("SlippageExceeded")) {
     return "Final shares were below your slippage limit. Refresh the quote or choose a wider limit.";
+  }
+  if (message.toLowerCase().includes("rate limited")) {
+    return "The HyperEVM RPC is rate limiting contract simulation right now. Wait a few seconds and retry; the app now avoids extra pre-submit calls where possible.";
   }
   return message || "Market action failed.";
 }
@@ -68,6 +72,7 @@ export function MarketPanel() {
   const [amount, setAmount] = useState("1");
   const [slippageBps, setSlippageBps] = useState<number>(DEFAULT_SLIPPAGE_BPS);
   const [message, setMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<TransactionToastState | null>(null);
   const [, setClockTick] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(() => setClockTick((tick) => tick + 1), 1_000);
@@ -115,6 +120,42 @@ export function MarketPanel() {
     };
   }, [market.position]);
 
+  useEffect(() => {
+    if (!toast || flow.hash !== toast.hash || toast.status !== "pending") return;
+    if (flow.receipt.data?.status === "success") {
+      setToast({
+        ...toast,
+        title: "Transaction confirmed",
+        detail: "HyperEVM confirmed the transaction. The market view is refreshing.",
+        status: "success",
+      });
+    } else if (flow.receipt.data?.status === "reverted" || flow.receipt.isError) {
+      setToast({
+        ...toast,
+        title: "Transaction failed",
+        detail:
+          flow.receipt.error?.message ??
+          "HyperEVM confirmed the transaction with a reverted status.",
+        status: "error",
+      });
+    }
+  }, [flow.hash, flow.receipt.data?.status, flow.receipt.error, flow.receipt.isError, toast]);
+
+  useEffect(() => {
+    if (!toast || toast.status === "pending") return;
+    const timer = window.setTimeout(() => setToast(null), 4_500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  function showSubmittedToast(title: string, hash: `0x${string}`) {
+    setToast({
+      hash,
+      title,
+      detail: "Transaction submitted. Waiting for HyperEVM confirmation.",
+      status: "pending",
+    });
+  }
+
   async function onBet() {
     try {
       setMessage(null);
@@ -126,9 +167,10 @@ export function MarketPanel() {
         );
         return;
       }
-      await preview.refetch();
-      await flow.placeBet(direction, amount, account.allowance, slippageBps);
-      setMessage("Transaction submitted. Waiting for HyperEVM confirmation.");
+      const refreshedPreview = preview.data ? undefined : await preview.refetch();
+      const shares = preview.data?.[3] ?? refreshedPreview?.data?.[3];
+      const hash = await flow.placeBet(direction, amount, account.allowance, slippageBps, shares);
+      showSubmittedToast("Bet submitted", hash);
     } catch (error) {
       setMessage(marketActionErrorMessage(error));
     }
@@ -137,8 +179,8 @@ export function MarketPanel() {
   async function onSettle() {
     try {
       setMessage(null);
-      await flow.settle();
-      setMessage("Settle submitted. Waiting for confirmation.");
+      const hash = await flow.settle();
+      showSubmittedToast("Settle submitted", hash);
     } catch (error) {
       setMessage(marketActionErrorMessage(error));
     }
@@ -147,8 +189,8 @@ export function MarketPanel() {
   async function onClaim() {
     try {
       setMessage(null);
-      await flow.claimPendingPayout();
-      setMessage("Claim submitted. Waiting for confirmation.");
+      const hash = await flow.claimPendingPayout();
+      showSubmittedToast("Claim submitted", hash);
     } catch (error) {
       setMessage(marketActionErrorMessage(error));
     }
@@ -156,6 +198,7 @@ export function MarketPanel() {
 
   return (
     <section className="panel market-panel">
+      <TransactionToast toast={toast} />
       <div className="panel-title">
         <div>
           <p>Active market</p>

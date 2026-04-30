@@ -1,4 +1,4 @@
-import { http, createConfig } from "wagmi";
+import { createConfig, fallback, http, webSocket } from "wagmi";
 import { injected, metaMask } from "wagmi/connectors";
 import { config, hyperEvm } from "./config";
 
@@ -14,7 +14,9 @@ export const wagmiConfig = createConfig({
     injected(),
   ],
   transports: {
-    [hyperEvm.id]: http(config.rpcUrl),
+    [hyperEvm.id]: config.wsRpcUrl
+      ? fallback([webSocket(config.wsRpcUrl), http(config.rpcUrl)])
+      : http(config.rpcUrl),
   },
 });
 
