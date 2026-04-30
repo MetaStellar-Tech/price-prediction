@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExchangeClient, HttpTransport } from "@nktkas/hyperliquid";
 import type { AbstractWallet } from "@nktkas/hyperliquid/signing";
@@ -583,7 +583,8 @@ export function useHyperliquidExchange() {
 export function useBetFlow(onDone: () => void) {
   const token = useTokenMeta();
   const { writeContractAsync, data: hash, isPending, error } = useWriteContract();
-  const receipt = useWaitForTransactionReceipt({ hash });
+  const [submittedHash, setSubmittedHash] = useState<Hash | undefined>();
+  const receipt = useWaitForTransactionReceipt({ hash: submittedHash });
   const handledHash = useRef<Hash | undefined>();
 
   async function placeBet(
@@ -619,36 +620,41 @@ export function useBetFlow(onDone: () => void) {
       args: [direction, parsed, minSharesOut],
       gas: BET_GAS_LIMIT,
     });
+    setSubmittedHash(txHash);
     return txHash;
   }
 
   async function settle() {
-    return writeContractAsync({
+    const txHash = await writeContractAsync({
       address: config.marketAddress,
       abi: marketAbi,
       functionName: "settle",
       gas: SETTLE_GAS_LIMIT,
     });
+    setSubmittedHash(txHash);
+    return txHash;
   }
 
   async function claimPendingPayout() {
-    return writeContractAsync({
+    const txHash = await writeContractAsync({
       address: config.marketAddress,
       abi: marketAbi,
       functionName: "claimPendingPayout",
       gas: CLAIM_PAYOUT_GAS_LIMIT,
     });
+    setSubmittedHash(txHash);
+    return txHash;
   }
 
   useEffect(() => {
-    if (receipt.data && hash && handledHash.current !== hash) {
-      handledHash.current = hash;
+    if (receipt.data && submittedHash && handledHash.current !== submittedHash) {
+      handledHash.current = submittedHash;
       onDone();
     }
-  }, [hash, onDone, receipt.data]);
+  }, [onDone, receipt.data, submittedHash]);
 
   return {
-    hash: hash as Hash | undefined,
+    hash: submittedHash ?? (hash as Hash | undefined),
     isPending: isPending || receipt.isLoading,
     isSuccess: receipt.isSuccess,
     receipt,

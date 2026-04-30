@@ -171,7 +171,6 @@ export function MarketPanel() {
       const shares = preview.data?.[3] ?? refreshedPreview?.data?.[3];
       const hash = await flow.placeBet(direction, amount, account.allowance, slippageBps, shares);
       showSubmittedToast("Bet submitted", hash);
-      setMessage("Transaction submitted. Waiting for HyperEVM confirmation.");
     } catch (error) {
       setMessage(marketActionErrorMessage(error));
     }
@@ -182,7 +181,6 @@ export function MarketPanel() {
       setMessage(null);
       const hash = await flow.settle();
       showSubmittedToast("Settle submitted", hash);
-      setMessage("Settle submitted. Waiting for confirmation.");
     } catch (error) {
       setMessage(marketActionErrorMessage(error));
     }
@@ -193,7 +191,6 @@ export function MarketPanel() {
       setMessage(null);
       const hash = await flow.claimPendingPayout();
       showSubmittedToast("Claim submitted", hash);
-      setMessage("Claim submitted. Waiting for confirmation.");
     } catch (error) {
       setMessage(marketActionErrorMessage(error));
     }
