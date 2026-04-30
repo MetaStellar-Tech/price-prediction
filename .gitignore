@@ -2,6 +2,8 @@ out/
 cache/
 broadcast/
 lib/
+!web/src/lib/
+!web/src/lib/*.ts
 node_modules/
 dist/
 .env

@@ -8,6 +8,7 @@ Vercel-ready pure frontend for the deployed PricePrediction market on Hyperliqui
 - wagmi + viem for HyperEVM wallet reads and contract writes
 - TanStack Query for polling HyperEVM and Hyperliquid API state
 - No backend, no custodial key path, no private-key input
+- Hyperliquid spot orders use a locally generated API wallet after connected-wallet approval
 
 ## Environment
 
@@ -48,8 +49,10 @@ npm run build
 ## Safety Notes
 
 - The app never asks for private keys.
+- HYPE spot purchases do not ask the connected wallet to sign Hyperliquid L1 order typed data
+  directly. The app generates a trading-only Hyperliquid API wallet in browser storage, asks the
+  connected wallet to approve that agent, and then signs the L1 order locally with the agent key.
 - Contract writes are submitted through the connected EVM wallet.
 - Hyperliquid Core recharge actions are shown as explicit action previews before submission.
 - Users should review every wallet signature and exchange action, especially HYPE spot purchases
   and Core-to-EVM transfers.
-

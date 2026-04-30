@@ -6,6 +6,25 @@ import { buildHypeTopUpPlan, buildUsdcBridgePlan, coreBalance, spotMidPrice } fr
 import { useAccountState, useHyperliquidExchange, useMids, useSpotMeta } from "../lib/hooks";
 import { formatNumber } from "../lib/format";
 
+function rechargeErrorMessage(error: unknown): string {
+  const parts: string[] = [];
+  let current = error;
+  while (current instanceof Error) {
+    if (current.message && !parts.includes(current.message)) parts.push(current.message);
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  if (
+    typeof current === "object" &&
+    current &&
+    "message" in current &&
+    typeof (current as { message?: unknown }).message === "string"
+  ) {
+    const message = (current as { message: string }).message;
+    if (!parts.includes(message)) parts.push(message);
+  }
+  return parts.join(" | ") || "Recharge action failed.";
+}
+
 export function RechargePanel() {
   const account = useAccountState();
   const mids = useMids();
@@ -28,7 +47,11 @@ export function RechargePanel() {
   async function executeStep(kind: string, index: number) {
     try {
       setSubmittedStep(kind);
-      setStatus("Waiting for wallet signature.");
+      setStatus(
+        needsHype && index === 0
+          ? "First-time buys approve a local Hyperliquid API wallet, then the order is signed locally."
+          : "Waiting for wallet signature.",
+      );
       if (needsHype && index === 0) {
         await exchange.buyHypeWithUsdc(HYPE_TOP_UP_USDC, hypeMid);
         setStatus("HYPE buy order submitted. Confirm fill before sending HYPE to EVM.");
@@ -40,7 +63,7 @@ export function RechargePanel() {
         setStatus("USDC Core-to-EVM transfer submitted.");
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Recharge action failed.");
+      setStatus(rechargeErrorMessage(error));
     }
   }
 

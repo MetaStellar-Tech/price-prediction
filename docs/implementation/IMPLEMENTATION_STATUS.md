@@ -35,6 +35,9 @@ Last updated: 2026-04-30
 - [x] Frontend defaults configured for HyperEVM mainnet chain id `999`, deployed market
   `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`, and stake token
   `0xb88339CB7199b77E23DB6E890353E22632Ba630f`.
+- [x] Frontend HYPE top-up flow avoids MetaMask `chainId` mismatch on Hyperliquid L1 orders by
+  approving a browser-local Hyperliquid API wallet, then signing the spot order with that local
+  agent wallet.
 
 ## Verification
 
