@@ -2,9 +2,12 @@ out/
 cache/
 broadcast/
 lib/
+node_modules/
+dist/
 .env
 .env.*
 !.env.example
+!.env.local.example
 ops/*.log
 ops/*.pid
 

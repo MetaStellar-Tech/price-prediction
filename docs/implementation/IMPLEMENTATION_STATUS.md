@@ -29,18 +29,30 @@ Last updated: 2026-04-30
   `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`.
 - [x] Repo-local operator runner added for `status`, `set-operator`, one-shot `tick`, and
   continuous `loop` maintenance.
+- [x] Vercel-ready pure frontend added under `web/` with landing page, wallet connect, HyperCore /
+  HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
+  claim, and user bet history.
+- [x] Frontend defaults configured for HyperEVM mainnet chain id `999`, deployed market
+  `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`, and stake token
+  `0xb88339CB7199b77E23DB6E890353E22632Ba630f`.
 
 ## Verification
 
 - [x] `forge fmt --check`
 - [x] `forge build`
 - [x] `forge test -vvv`
+- [x] `web`: `npm run typecheck`
+- [x] `web`: `npm run lint`
+- [x] `web`: `npm run build`
 
 ## Current Boundaries
 
 - V1 uses native HyperEVM L1Read/CoreRead only.
 - `CoreReadAttestor` is documented as a future fallback and is not implemented.
-- V1 does not include production watcher, Go backend, Hardhat, or main-path TypeScript harness.
+- V1 does not include production watcher, Go backend, Hardhat, or main-path TypeScript protocol
+  harness.
+- `web/` is the explicit user-facing frontend exception. It is a pure frontend app for Vercel and
+  does not introduce a backend, private-key custody, or protocol harness into the Foundry path.
 - Deployment remains Foundry-first and uses `.env` plus `script/deploy.sh`; generated `broadcast/`
   artifacts are not committed. The default deployment target is Hyperliquid EVM mainnet.
 - Operations remain Foundry/cast based and repo-local. The operator runner is not a production Go
