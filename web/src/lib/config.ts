@@ -10,6 +10,7 @@ export const DEFAULT_SLIPPAGE_BPS = 500;
 
 export const config = {
   rpcUrl: env.VITE_HYPEREVM_RPC_URL ?? "https://rpc.hyperliquid.xyz/evm",
+  wsRpcUrl: env.VITE_HYPEREVM_WS_URL as string | undefined,
   hyperliquidInfoUrl: env.VITE_HYPERLIQUID_INFO_URL ?? "https://api.hyperliquid.xyz/info",
   hyperliquidExchangeUrl:
     env.VITE_HYPERLIQUID_EXCHANGE_URL ?? "https://api.hyperliquid.xyz/exchange",
@@ -30,7 +31,7 @@ export const hyperEvm = {
     symbol: "HYPE",
   },
   rpcUrls: {
-    default: { http: [config.rpcUrl] },
+    default: { http: [config.rpcUrl], webSocket: config.wsRpcUrl ? [config.wsRpcUrl] : undefined },
   },
   blockExplorers: {
     default: {

@@ -1,12 +1,18 @@
 import { ArrowDown, ArrowUp, Clock3 } from "lucide-react";
 import { formatUnits } from "viem";
-import { directionLabels, useAccountState, useMarketState } from "../lib/hooks";
-import { formatNumber } from "../lib/format";
+import { directionLabels, useAccountState, useUserBetHistory } from "../lib/hooks";
+import { formatNumber, formatToken } from "../lib/format";
+
+function formatRoi(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return "--";
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${formatNumber(value / 100, 2)}%`;
+}
 
 export function HistoryPanel() {
   const account = useAccountState();
-  const market = useMarketState(account.address);
-  const rows = [...market.userEvents].reverse().slice(0, 8);
+  const history = useUserBetHistory(account.address);
+  const rows = history.rows.slice(0, 10);
 
   return (
     <section className="panel">
@@ -25,7 +31,8 @@ export function HistoryPanel() {
             No wallet betting history found yet.
           </div>
         ) : (
-          rows.map((event) => {
+          rows.map((row) => {
+            const event = row.event;
             const direction = Number(event.args.direction ?? 0) as 0 | 1;
             return (
               <div className="history-row" key={`${event.transactionHash}-${event.logIndex}`}>
@@ -38,7 +45,24 @@ export function HistoryPanel() {
                   </strong>
                   <small>{event.transactionHash}</small>
                 </div>
-                <b>{formatNumber(Number(formatUnits(event.args.amount ?? 0n, market.decimals)))} USDC</b>
+                <dl className="history-stats">
+                  <div>
+                    <dt>Amount</dt>
+                    <dd>{formatNumber(Number(formatUnits(event.args.amount ?? 0n, history.decimals)))} USDC</dd>
+                  </div>
+                  <div>
+                    <dt>Result</dt>
+                    <dd>{row.statusLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>ROI</dt>
+                    <dd>{formatRoi(row.roiBps)}</dd>
+                  </div>
+                  <div>
+                    <dt>Payout</dt>
+                    <dd>{formatToken(row.payout, history.decimals)} USDC</dd>
+                  </div>
+                </dl>
               </div>
             );
           })
@@ -47,4 +71,3 @@ export function HistoryPanel() {
     </section>
   );
 }
-
