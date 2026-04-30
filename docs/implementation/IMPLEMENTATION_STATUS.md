@@ -29,12 +29,15 @@ Last updated: 2026-04-30
   `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`.
 - [x] Repo-local operator runner added for `status`, `set-operator`, one-shot `tick`, and
   continuous `loop` maintenance.
+- [x] Repo-local Hyperliquid live market-maker harness added for reusable maker wallets, funding,
+  approvals, balanced low-cost betting, post-cleanup rebalancing, and review report generation.
 
 ## Verification
 
 - [x] `forge fmt --check`
 - [x] `forge build`
 - [x] `forge test -vvv`
+- [x] `bash -n integration/hyperliquid-live-harness/market-maker.sh`
 
 ## Current Boundaries
 
@@ -45,4 +48,7 @@ Last updated: 2026-04-30
   artifacts are not committed. The default deployment target is Hyperliquid EVM mainnet.
 - Operations remain Foundry/cast based and repo-local. The operator runner is not a production Go
   watcher, risk engine, or off-chain oracle service.
+- The live market-maker harness is a rehearsal tool for contract interaction coverage. It is not a
+  production market maker, does not seek profit, and keeps generated private keys only in an ignored
+  local env file.
 - Simulation tests provide practical adversarial coverage, not a formal proof of no arbitrage.

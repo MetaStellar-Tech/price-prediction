@@ -101,4 +101,9 @@ and `cleanup` according to the on-chain round state.
 
 See `docs/operations/OPERATOR_RUNNER.md` for the required `.env` values and tick policy.
 
+The repo also includes an isolated live market-maker harness under
+`integration/hyperliquid-live-harness/`. It creates reusable local maker wallets, keeps them lightly
+funded, places low-cost balancing bets after external activity, and writes post-round validation
+reports. See `docs/operations/MARKET_MAKER_HARNESS.md`.
+
 This repository intentionally does not include a Go backend, production watcher, Hardhat workflow, or TypeScript protocol harness in the main path.
