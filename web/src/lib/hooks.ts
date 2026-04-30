@@ -64,6 +64,7 @@ const MARKET_READ_REFETCH_MS = 2_000;
 const MARKET_EVENTS_REFETCH_MS = 3_000;
 const USER_EVENTS_REFETCH_MS = 5_000;
 const MIDS_REFETCH_MS = 3_000;
+const BET_PREVIEW_REFETCH_MS = 1_000;
 
 function exchangeApiBaseUrl() {
   return config.hyperliquidExchangeUrl.replace(/\/exchange\/?$/, "");
@@ -468,7 +469,12 @@ export function useBetFlow(onDone: () => void) {
   const receipt = useWaitForTransactionReceipt({ hash });
   const handledHash = useRef<Hash | undefined>();
 
-  async function placeBet(direction: 0 | 1, amount: string, allowance?: bigint) {
+  async function placeBet(
+    direction: 0 | 1,
+    amount: string,
+    allowance?: bigint,
+    slippageBps = 100,
+  ) {
     const parsed = parseUnits(amount || "0", token.decimals);
     if (parsed <= 0n) throw new Error("Enter a positive amount.");
     if ((allowance ?? 0n) < parsed) {
@@ -488,7 +494,8 @@ export function useBetFlow(onDone: () => void) {
       functionName: "previewBet",
       args: [direction, parsed],
     });
-    const minSharesOut = (preview[3] * 99n) / 100n;
+    const boundedSlippageBps = Math.min(Math.max(Math.trunc(slippageBps), 0), 10_000);
+    const minSharesOut = (preview[3] * BigInt(10_000 - boundedSlippageBps)) / 10_000n;
 
     const txHash = await writeContractAsync({
       address: config.marketAddress,
@@ -531,4 +538,29 @@ export function useBetFlow(onDone: () => void) {
     settle,
     claimPendingPayout,
   };
+}
+
+export function useBetPreview(direction: 0 | 1, amount: string, enabled: boolean) {
+  const token = useTokenMeta();
+  const parsedAmount = useMemo(() => {
+    try {
+      const parsed = parseUnits(amount || "0", token.decimals);
+      return parsed > 0n ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [amount, token.decimals]);
+
+  const preview = useReadContract({
+    address: config.marketAddress,
+    abi: marketAbi,
+    functionName: "previewBet",
+    args: parsedAmount ? [direction, parsedAmount] : undefined,
+    query: {
+      enabled: enabled && parsedAmount !== undefined,
+      refetchInterval: BET_PREVIEW_REFETCH_MS,
+    },
+  });
+
+  return { ...preview, parsedAmount };
 }

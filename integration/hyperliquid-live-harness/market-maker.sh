@@ -42,6 +42,7 @@ SLIPPAGE_BPS="${SLIPPAGE_BPS:-500}"
 POLL_SECONDS="${POLL_SECONDS:-12}"
 MIN_MAKER_DELAY_SECONDS="${MIN_MAKER_DELAY_SECONDS:-2}"
 MAX_MAKER_DELAY_SECONDS="${MAX_MAKER_DELAY_SECONDS:-12}"
+MAKER_BET_DEADLINE_BUFFER_SECONDS="${MAKER_BET_DEADLINE_BUFFER_SECONDS:-8}"
 CLEANUP_BATCH_SIZE="${CLEANUP_BATCH_SIZE:-50}"
 EVENT_FROM_BLOCK="${EVENT_FROM_BLOCK:-33813039}"
 EVENT_TO_BLOCK="${EVENT_TO_BLOCK:-latest}"
@@ -189,6 +190,10 @@ send_hype() {
 
 current_round_id() {
   call_market "currentRoundId()(uint256)"
+}
+
+chain_timestamp() {
+  cast block latest --field timestamp --rpc-url "$RPC_URL"
 }
 
 round_field() {
@@ -543,7 +548,32 @@ preview_shares() {
   local direction="$1"
   local amount="$2"
   call_market "previewBet(uint8,uint256)(uint256,uint256,uint256,uint256)" "$direction" "$amount" \
-    | tr -d '() ' | awk -F, '{print $4}'
+    | awk '{
+      gsub(/[^0-9]+/, " ");
+      for (i = 1; i <= NF; i++) {
+        count++;
+        if (count == 4) {
+          print $i;
+          exit;
+        }
+      }
+    }'
+}
+
+bet_window_has_buffer() {
+  local round_id="$1"
+  local state stop_time now
+  state="$(round_field "$round_id" state)"
+  if [ "$state" != "1" ]; then
+    echo "Round $round_id is $(state_name "$state"); maker skips stale betting window."
+    return 1
+  fi
+  stop_time="$(round_field "$round_id" stopBetTime)"
+  now="$(chain_timestamp)"
+  if [ $((now + MAKER_BET_DEADLINE_BUFFER_SECONDS)) -ge "$stop_time" ]; then
+    echo "Round $round_id is too close to stopBetTime; stopBetTime=$stop_time now=$now buffer=${MAKER_BET_DEADLINE_BUFFER_SECONDS}s."
+    return 1
+  fi
 }
 
 place_bet() {
@@ -576,10 +606,48 @@ place_bet() {
   fi
   amount="$(rand_range "$MIN_BET_USDC" "$max_amount")"
 
-  shares="$(preview_shares "$direction" "$amount")"
+  if ! bet_window_has_buffer "$round_id"; then
+    return 0
+  fi
+  local preview_output
+  if ! preview_output="$(preview_shares "$direction" "$amount" 2>&1)"; then
+    case "$preview_output" in
+      *0xbaf3f0f7*|*0x2749efd4*)
+        printf '%s\n' "$preview_output"
+        echo "maker_$((maker_index + 1)) skipped stale round=$round_id preview after betting window changed."
+        return 0
+        ;;
+      *)
+        printf '%s\n' "$preview_output"
+        return 1
+        ;;
+    esac
+  fi
+  shares="$preview_output"
+  if ! [[ "$shares" =~ ^[0-9]+$ ]] || [ "$shares" -le 0 ]; then
+    echo "Preview returned no shares for round=$round_id direction=$direction amount=$(format_usdc "$amount"); skipping."
+    return 0
+  fi
+  if ! bet_window_has_buffer "$round_id"; then
+    return 0
+  fi
   min_shares=$((shares * (10000 - SLIPPAGE_BPS) / 10000))
   echo "maker_$((maker_index + 1)) bet round=$round_id direction=$direction amount=$(format_usdc "$amount") minShares=$min_shares"
-  send_market "$key" "bet(uint8,uint256,uint256)" "$direction" "$amount" "$min_shares"
+  local output
+  if ! output="$(send_market "$key" "bet(uint8,uint256,uint256)" "$direction" "$amount" "$min_shares" 2>&1)"; then
+    case "$output" in
+      *0xbaf3f0f7*|*0x2749efd4*)
+        printf '%s\n' "$output"
+        echo "maker_$((maker_index + 1)) skipped stale round=$round_id bet after betting window changed."
+        return 0
+        ;;
+      *)
+        printf '%s\n' "$output"
+        return 1
+        ;;
+    esac
+  fi
+  printf '%s\n' "$output"
 }
 
 external_participant_count() {

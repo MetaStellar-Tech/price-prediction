@@ -91,6 +91,11 @@ interaction flowing at low cost:
 - It caps each maker at `6 USDC` per round and all makers at `24 USDC` per round.
 - It uses mostly `1-3 USDC` bets, only allowing larger bets when one side is severely underfunded.
 - It calls `previewBet` before `bet` and applies a conservative `minSharesOut`.
+- It skips new bets when the chain timestamp is within `MAKER_BET_DEADLINE_BUFFER_SECONDS`
+  seconds of `stopBetTime`, defaulting to `8`, so operator-driven `stopBet` races do not stop the
+  loop.
+- If a submitted maker bet still races a state transition and reverts with `InvalidState` or
+  `BetWindowClosed`, the harness logs the stale-window result and keeps watching later rounds.
 
 Round progression remains separate. Use `ops/operator.sh loop` or manual operator commands for
 `startRound`, `stopBet`, `settle`, and `cleanup`.
@@ -127,6 +132,7 @@ GAS_PRICE_WEI=3100000000
 MARKET_GAS_LIMIT=500000
 TOKEN_GAS_LIMIT=80000
 HYPE_TRANSFER_GAS_LIMIT=21000
+MAKER_BET_DEADLINE_BUFFER_SECONDS=8
 ```
 
 This avoids aborting the workflow when the Hyperliquid RPC accepts a transaction but receipt polling

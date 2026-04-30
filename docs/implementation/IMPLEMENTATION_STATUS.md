@@ -31,6 +31,9 @@ Last updated: 2026-04-30
   continuous `loop` maintenance.
 - [x] Repo-local Hyperliquid live market-maker harness added for reusable maker wallets, funding,
   approvals, balanced low-cost betting, post-cleanup rebalancing, and review report generation.
+- [x] Live market-maker harness skips near-expiry betting windows, parses `previewBet` shares across
+  old and new `cast` output formats, and treats `InvalidState` / `BetWindowClosed` bet reverts as
+  stale-window races instead of stopping the loop.
 - [x] Vercel-ready pure frontend added under `web/` with landing page, wallet connect, HyperCore /
   HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
   claim, and user bet history.
@@ -58,6 +61,9 @@ Last updated: 2026-04-30
 - [x] Frontend bet flow includes market custom errors in the ABI, disables the bet button outside
   the active betting window, and maps `InvalidState`, `BetWindowClosed`, `InvalidAmount`, and
   `SlippageExceeded` failures to user-readable messages.
+- [x] Frontend bet ticket shows live `previewBet` execution details, including estimated shares,
+  minimum shares, average price, before/after price, and first-bet price impact; bet submission
+  refreshes the quote immediately before sending and defaults to a 1 USDC stake with 5% slippage.
 
 ## Verification
 
@@ -84,5 +90,7 @@ Last updated: 2026-04-30
 - The live market-maker harness is a rehearsal tool for contract interaction coverage. It is not a
   production market maker, does not seek profit, and keeps generated private keys only in an ignored
   local env file. Harness transaction sends default to async mode with explicit gas settings to
-  avoid aborting on transient Hyperliquid RPC receipt-polling block-height errors.
+  avoid aborting on transient Hyperliquid RPC receipt-polling block-height errors. The harness also
+  avoids submitting bets too close to `stopBetTime` and continues watching if a bet races an
+  operator state transition.
 - Simulation tests provide practical adversarial coverage, not a formal proof of no arbitrage.

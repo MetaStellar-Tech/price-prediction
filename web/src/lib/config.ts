@@ -6,7 +6,7 @@ export const HYPEREVM_CHAIN_ID = 999;
 export const HYPE_SYSTEM_ADDRESS = "0x2222222222222222222222222222222222222222" as Address;
 export const HYPE_GAS_RESERVE = 0.02;
 export const HYPE_TOP_UP_USDC = 2;
-export const DEFAULT_SLIPPAGE_BPS = 100;
+export const DEFAULT_SLIPPAGE_BPS = 500;
 
 export const config = {
   rpcUrl: env.VITE_HYPEREVM_RPC_URL ?? "https://rpc.hyperliquid.xyz/evm",
@@ -39,4 +39,3 @@ export const hyperEvm = {
     },
   },
 } as const;
-

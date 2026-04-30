@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, ArrowDown, ArrowUp, Coins, Loader2, Scale, Timer } from "lucide-react";
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  Coins,
+  Loader2,
+  RefreshCw,
+  Scale,
+  Timer,
+} from "lucide-react";
 import { formatUnits } from "viem";
 import { DEFAULT_SLIPPAGE_BPS } from "../lib/config";
 import {
@@ -8,6 +17,7 @@ import {
   roundStateLabels,
   useAccountState,
   useBetFlow,
+  useBetPreview,
   useMarketState,
   useMids,
 } from "../lib/hooks";
@@ -32,9 +42,22 @@ function marketActionErrorMessage(error: unknown) {
     return "Enter a positive bet amount.";
   }
   if (message.includes("SlippageExceeded")) {
-    return "Price moved beyond the default slippage. Refresh and try again.";
+    return "Final shares were below your slippage limit. Refresh the quote or choose a wider limit.";
   }
   return message || "Market action failed.";
+}
+
+const SLIPPAGE_OPTIONS_BPS = [DEFAULT_SLIPPAGE_BPS, 300, 100] as const;
+
+function formatSharePriceBps(value?: bigint) {
+  if (value === undefined) return "--";
+  return `${formatNumber(Number(value) / 10_000, 4)} USDC/share`;
+}
+
+function formatSignedPercentBps(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return "--";
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${formatNumber(value / 100, 2)}%`;
 }
 
 export function MarketPanel() {
@@ -42,7 +65,8 @@ export function MarketPanel() {
   const market = useMarketState(account.address);
   const mids = useMids();
   const [direction, setDirection] = useState<0 | 1>(0);
-  const [amount, setAmount] = useState("10");
+  const [amount, setAmount] = useState("1");
+  const [slippageBps, setSlippageBps] = useState<number>(DEFAULT_SLIPPAGE_BPS);
   const [message, setMessage] = useState<string | null>(null);
   const [, setClockTick] = useState(0);
   useEffect(() => {
@@ -62,6 +86,7 @@ export function MarketPanel() {
       ? secondsUntil(round?.[4] as bigint | undefined) === 0
       : false;
   const canBet = account.isConnected && roundState === 1 && secondsUntil(round?.[3] as bigint | undefined) > 0;
+  const preview = useBetPreview(direction, amount, canBet);
   const totalPool = (round?.[7] ?? 0n) + (round?.[8] ?? 0n);
   const upPool = Number(formatUnits(round?.[7] ?? 0n, market.decimals));
   const downPool = Number(formatUnits(round?.[8] ?? 0n, market.decimals));
@@ -69,6 +94,16 @@ export function MarketPanel() {
   const btcMid = mids.data ? Number(mids.data.BTC ?? mids.data["BTC/USDC"]) : undefined;
   const stopCountdown = formatCountdown(secondsUntil(round?.[3] as bigint | undefined));
   const settleCountdown = formatCountdown(secondsUntil(round?.[4] as bigint | undefined));
+  const quotedShares = preview.data?.[3];
+  const minSharesOut =
+    quotedShares === undefined ? undefined : (quotedShares * BigInt(10_000 - slippageBps)) / 10_000n;
+  const beforePriceBps = preview.data?.[0];
+  const afterPriceBps = preview.data?.[1];
+  const averagePriceBps = preview.data?.[2];
+  const priceImpactBps =
+    beforePriceBps && afterPriceBps !== undefined
+      ? Number(((afterPriceBps - beforePriceBps) * 10_000n) / beforePriceBps)
+      : undefined;
 
   const position = useMemo(() => {
     const data = market.position;
@@ -91,7 +126,8 @@ export function MarketPanel() {
         );
         return;
       }
-      await flow.placeBet(direction, amount, account.allowance);
+      await preview.refetch();
+      await flow.placeBet(direction, amount, account.allowance, slippageBps);
       setMessage("Transaction submitted. Waiting for HyperEVM confirmation.");
     } catch (error) {
       setMessage(marketActionErrorMessage(error));
@@ -190,11 +226,54 @@ export function MarketPanel() {
         <label className="field">
           <span>Bet amount</span>
           <input inputMode="decimal" onChange={(event) => setAmount(event.target.value)} value={amount} />
-          <small>Default slippage: {DEFAULT_SLIPPAGE_BPS / 100}%</small>
         </label>
+        <div className="field">
+          <span>Slippage limit</span>
+          <div className="segmented compact">
+            {SLIPPAGE_OPTIONS_BPS.map((option) => (
+              <button
+                className={slippageBps === option ? "active" : ""}
+                key={option}
+                onClick={() => setSlippageBps(option)}
+                type="button"
+              >
+                {option / 100}%
+              </button>
+            ))}
+          </div>
+        </div>
         <button className="button primary wide" disabled={flow.isPending || !canBet} onClick={onBet} type="button">
           {flow.isPending ? <Loader2 className="spin" size={18} /> : null}
           Bet {directionLabels[direction]}
+        </button>
+      </div>
+
+      <div className="quote-panel">
+        <div>
+          <span>Estimated shares</span>
+          <strong>{formatToken(quotedShares, market.decimals, 4)}</strong>
+          <small>Minimum: {formatToken(minSharesOut, market.decimals, 4)}</small>
+        </div>
+        <div>
+          <span>Average price</span>
+          <strong>{formatSharePriceBps(averagePriceBps)}</strong>
+          <small>
+            {formatSharePriceBps(beforePriceBps)} to {formatSharePriceBps(afterPriceBps)}
+          </small>
+        </div>
+        <div>
+          <span>Price impact</span>
+          <strong>{formatSignedPercentBps(priceImpactBps)}</strong>
+          <small>{totalPool === 0n ? "First bet impact included" : "Current pool included"}</small>
+        </div>
+        <button
+          className="button ghost icon-button"
+          disabled={!canBet || preview.isFetching}
+          onClick={() => preview.refetch()}
+          title="Refresh quote"
+          type="button"
+        >
+          <RefreshCw className={preview.isFetching ? "spin" : ""} size={17} />
         </button>
       </div>
 

@@ -61,8 +61,9 @@ npm run build
 - Market state uses a fast UI cadence for active rounds: contract state every 2 seconds, bet events
   every 3 seconds, user bet history every 5 seconds, Hyperliquid mids every 3 seconds, and countdown
   labels re-render locally every second.
-- Bet actions are disabled outside the active betting window and decode market custom errors into
-  user-readable messages.
+- Bet actions are disabled outside the active betting window, show a live `previewBet` quote with
+  first-bet price impact included, default to a 1 USDC stake and 5% slippage limit, refresh the
+  quote immediately before submission, and decode market custom errors into user-readable messages.
 - Contract writes are submitted through the connected EVM wallet.
 - Hyperliquid Core recharge actions are shown as explicit action previews before submission.
   Core-to-HyperEVM linked-token transfers use Hyperliquid `sendAsset`, not legacy `spotSend`, so
