@@ -25,7 +25,7 @@ VITE_HYPEREVM_RPC_URL=https://rpc.hyperliquid.xyz/evm
 VITE_HYPEREVM_WS_URL=
 VITE_HYPERLIQUID_INFO_URL=https://api.hyperliquid.xyz/info
 VITE_HYPERLIQUID_EXCHANGE_URL=https://api.hyperliquid.xyz/exchange
-VITE_MARKET_ADDRESS=0x406661e7AeF968441d53bc9557be3a8FAa92A67B
+VITE_MARKET_ADDRESS=0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7
 VITE_STAKE_TOKEN_ADDRESS=0xb88339CB7199b77E23DB6E890353E22632Ba630f
 ```
 
@@ -44,7 +44,7 @@ npm run build
 - HyperEVM chain id is `999`.
 - HyperEVM RPC defaults to `https://rpc.hyperliquid.xyz/evm`.
 - HYPE is the native gas token.
-- `PricePredictionMarket` is deployed at `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`.
+- `PricePredictionMarket` is deployed at `0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7`.
 - The stake token is `0xb88339CB7199b77E23DB6E890353E22632Ba630f`.
 
 ## Safety Notes

@@ -31,7 +31,7 @@ Last updated: 2026-04-30
 - [x] Foundry bytecode metadata hash disabled to keep HyperEVM mainnet deployment gas below the
   current block gas limit.
 - [x] `PricePredictionMarket` deployed and post-deploy checked on Hyperliquid EVM mainnet at
-  `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`.
+  `0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7`.
 - [x] Repo-local operator runner added for `status`, `set-operator`, one-shot `tick`, and
   continuous `loop` maintenance.
 - [x] Operator runner sends now use a configurable `OPERATOR_GAS_PRICE`, defaulting to `1gwei`, so
@@ -50,7 +50,7 @@ Last updated: 2026-04-30
   HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
   claim, and user bet history.
 - [x] Frontend defaults configured for HyperEVM mainnet chain id `999`, deployed market
-  `0x406661e7AeF968441d53bc9557be3a8FAa92A67B`, and stake token
+  `0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7`, and stake token
   `0xb88339CB7199b77E23DB6E890353E22632Ba630f`.
 - [x] Frontend HYPE top-up flow avoids MetaMask `chainId` mismatch on Hyperliquid L1 orders by
   approving a browser-local Hyperliquid API wallet with a Hyperliquid-valid 16-character-or-shorter

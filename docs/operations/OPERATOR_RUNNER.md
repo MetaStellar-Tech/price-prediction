@@ -13,7 +13,7 @@ Required for all runner commands:
 ```sh
 RPC_URL=https://rpc.hyperliquid.xyz/evm
 CHAIN_ID=999
-MARKET_ADDRESS=0x406661e7AeF968441d53bc9557be3a8FAa92A67B
+MARKET_ADDRESS=0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7
 ```
 
 Required to set a separate operator:

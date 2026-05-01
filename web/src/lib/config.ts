@@ -20,7 +20,7 @@ export const config = {
     env.VITE_HYPERLIQUID_EXCHANGE_URL ?? "https://api.hyperliquid.xyz/exchange",
   marketAddress:
     (env.VITE_MARKET_ADDRESS as Address | undefined) ??
-    "0x406661e7AeF968441d53bc9557be3a8FAa92A67B",
+    "0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7",
   stakeTokenAddress:
     (env.VITE_STAKE_TOKEN_ADDRESS as Address | undefined) ??
     "0xb88339CB7199b77E23DB6E890353E22632Ba630f",

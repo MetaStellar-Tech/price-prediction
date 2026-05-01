@@ -29,7 +29,7 @@ The default target is the recorded Hyperliquid EVM mainnet deployment:
 ```text
 RPC_URL=https://rpc.hyperliquid.xyz/evm
 CHAIN_ID=999
-MARKET_ADDRESS=0x406661e7AeF968441d53bc9557be3a8FAa92A67B
+MARKET_ADDRESS=0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7
 STAKE_TOKEN=0xb88339CB7199b77E23DB6E890353E22632Ba630f
 ```
 
