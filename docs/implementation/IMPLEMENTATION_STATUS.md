@@ -38,6 +38,9 @@ Last updated: 2026-05-06
   routine maintenance transactions do not rely on potentially higher RPC fee suggestions.
 - [x] Operator runner suppresses Foundry nightly-build warnings by default with
   `FOUNDRY_DISABLE_NIGHTLY_WARNING=true`.
+- [x] Operator runner normalizes `cast` numeric reads to plain base-10 integers before comparing
+  timestamps, so Foundry output with bracketed scientific notation does not block `stopBet` or
+  `settle` ticks.
 - [x] Repo-local Hyperliquid live market-maker harness added for reusable maker wallets, funding,
   approvals, balanced low-cost betting, post-cleanup rebalancing, and review report generation.
 - [x] Live market-maker harness skips near-expiry betting windows, parses `previewBet` shares across
@@ -52,6 +55,8 @@ Last updated: 2026-05-06
   deployment values keep operator, web, and market-maker contract targets aligned.
 - [x] Live market-maker harness suppresses Foundry nightly-build warnings by default with
   `FOUNDRY_DISABLE_NIGHTLY_WARNING=true`.
+- [x] Live market-maker harness normalizes `cast` numeric reads before shell arithmetic, keeping
+  stale-window checks compatible with Foundry output that includes bracketed scientific notation.
 - [x] Vercel-ready pure frontend added under `web/` with landing page, wallet connect, HyperCore /
   HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
   claim, and user bet history.
@@ -82,6 +87,9 @@ Last updated: 2026-05-06
 - [x] Frontend bet ticket shows live Up/Down winning-payout estimates from `previewBet`, includes
   first-bet price impact, hides raw share amounts from the user-facing ticket, and defaults to a 1
   USDC stake with 80% slippage.
+- [x] Frontend bet ticket keeps Up/Down payout estimates visible while the on-chain round state is
+  still `Betting`, even if the local `stopBetTime` countdown has elapsed and bet submission is
+  locked until the operator advances the round.
 - [x] Frontend bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas
   limits for market writes, and maps RPC rate-limit failures to retry guidance instead of showing
   raw viem contract-call traces.

@@ -119,6 +119,8 @@ interaction flowing at low cost:
 - It skips new bets when the chain timestamp is within `MAKER_BET_DEADLINE_BUFFER_SECONDS`
   seconds of `stopBetTime`, defaulting to `8`, so permissionless `stopBet` races do not stop the
   loop.
+- It normalizes numeric `cast` reads to plain base-10 integers, so Foundry output that includes
+  bracketed scientific notation remains safe for shell arithmetic.
 - If a submitted maker bet still races a state transition and reverts with `InvalidState` or
   `BetWindowClosed`, the harness logs the stale-window result and keeps watching later rounds.
 

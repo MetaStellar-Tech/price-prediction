@@ -36,6 +36,17 @@ call_market() {
   cast call --rpc-url "$RPC_URL" "$MARKET_ADDRESS" "$@"
 }
 
+first_uint() {
+  awk 'match($0, /[0-9]+/) { print substr($0, RSTART, RLENGTH); exit }'
+}
+
+is_uint() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 send_market() {
   local private_key="$1"
   shift
@@ -65,7 +76,7 @@ to_decimal() {
 }
 
 current_round_id() {
-  call_market "currentRoundId()(uint256)"
+  call_market "currentRoundId()(uint256)" | first_uint
 }
 
 current_operator() {
@@ -73,7 +84,7 @@ current_operator() {
 }
 
 chain_timestamp() {
-  cast block latest --field timestamp --rpc-url "$RPC_URL"
+  cast block latest --field timestamp --rpc-url "$RPC_URL" | first_uint
 }
 
 round_field() {
@@ -103,7 +114,7 @@ round_field() {
 
   call_market \
     "rounds(uint256)((uint8,uint8,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,bool))" \
-    "$round_id" | tr -d '() ' | awk -F, -v index="$index" '{print $index}'
+    "$round_id" | tr -d '() ' | awk -F, -v index="$index" '{print $index}' | first_uint
 }
 
 state_name() {
@@ -136,7 +147,7 @@ print_status() {
   stop_time="$(round_field "$round_id" stopBetTime)"
   settle_time="$(round_field "$round_id" settleTime)"
   cleanup_index="$(round_field "$round_id" cleanupIndex)"
-  participant_count="$(call_market "participantCount(uint256)(uint256)" "$round_id")"
+  participant_count="$(call_market "participantCount(uint256)(uint256)" "$round_id" | first_uint)"
   now="$(chain_timestamp)"
 
   echo "state=$(state_name "$state")"
@@ -178,11 +189,19 @@ tick() {
   local state now
   state="$(round_field "$round_id" state)"
   now="$(chain_timestamp)"
+  if ! is_uint "$state" || ! is_uint "$now"; then
+    echo "Unable to read round state or chain timestamp; state=$state now=$now."
+    return
+  fi
 
   case "$state" in
     1)
       local stop_time
       stop_time="$(round_field "$round_id" stopBetTime)"
+      if ! is_uint "$stop_time"; then
+        echo "Unable to read stopBetTime for round $round_id; stopBetTime=$stop_time now=$now."
+        return
+      fi
       if [ "$now" -ge "$stop_time" ]; then
         echo "Round $round_id betting window elapsed; stopping bets."
         send_market "$OPERATOR_PRIVATE_KEY" "stopBet()"
@@ -193,6 +212,10 @@ tick() {
     2)
       local settle_time
       settle_time="$(round_field "$round_id" settleTime)"
+      if ! is_uint "$settle_time"; then
+        echo "Unable to read settleTime for round $round_id; settleTime=$settle_time now=$now."
+        return
+      fi
       if [ "$now" -ge "$settle_time" ]; then
         echo "Round $round_id settle time reached; settling."
         send_market "$OPERATOR_PRIVATE_KEY" "settle()"

@@ -76,6 +76,17 @@ require_runtime_env() {
   require_env STAKE_TOKEN
 }
 
+first_uint() {
+  awk 'match($0, /[0-9]+/) { print substr($0, RSTART, RLENGTH); exit }'
+}
+
+is_uint() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 require_wallet_env() {
   require_env COLLECTOR_ADDRESS
   require_env COLLECTOR_PRIVATE_KEY
@@ -232,11 +243,11 @@ send_hype() {
 }
 
 current_round_id() {
-  call_market "currentRoundId()(uint256)"
+  call_market "currentRoundId()(uint256)" | first_uint
 }
 
 chain_timestamp() {
-  cast block latest --field timestamp --rpc-url "$RPC_URL"
+  cast block latest --field timestamp --rpc-url "$RPC_URL" | first_uint
 }
 
 round_field() {
@@ -266,7 +277,7 @@ round_field() {
 
   call_market \
     "rounds(uint256)((uint8,uint8,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,bool))" \
-    "$round_id" | tr -d '() ' | awk -F, -v index="$index" '{print $index}'
+    "$round_id" | tr -d '() ' | awk -F, -v index="$index" '{print $index}' | first_uint
 }
 
 state_name() {
@@ -619,6 +630,10 @@ bet_window_has_buffer() {
   fi
   stop_time="$(round_field "$round_id" stopBetTime)"
   now="$(chain_timestamp)"
+  if ! is_uint "$stop_time" || ! is_uint "$now"; then
+    echo "Round $round_id has unreadable timing; stopBetTime=$stop_time now=$now."
+    return 1
+  fi
   if [ $((now + MAKER_BET_DEADLINE_BUFFER_SECONDS)) -ge "$stop_time" ]; then
     echo "Round $round_id is too close to stopBetTime; stopBetTime=$stop_time now=$now buffer=${MAKER_BET_DEADLINE_BUFFER_SECONDS}s."
     return 1

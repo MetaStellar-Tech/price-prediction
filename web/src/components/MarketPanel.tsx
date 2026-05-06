@@ -112,10 +112,11 @@ export function MarketPanel() {
     roundState === 1 || roundState === 2
       ? secondsUntil(round?.[4] as bigint | undefined) === 0
       : false;
-  const canQuote = roundState === 1 && secondsUntil(round?.[3] as bigint | undefined) > 0;
+  const canPreview = roundState === 1;
+  const canQuote = canPreview && secondsUntil(round?.[3] as bigint | undefined) > 0;
   const canBet = account.isConnected && canQuote;
-  const upPreview = useBetPreview(0, amount, canQuote);
-  const downPreview = useBetPreview(1, amount, canQuote);
+  const upPreview = useBetPreview(0, amount, canPreview);
+  const downPreview = useBetPreview(1, amount, canPreview);
   const preview = direction === 0 ? upPreview : downPreview;
   const totalPool = (round?.[7] ?? 0n) + (round?.[8] ?? 0n);
   const upPool = Number(formatUnits(round?.[7] ?? 0n, market.decimals));
@@ -346,11 +347,11 @@ export function MarketPanel() {
         <div>
           <span>Quote impact</span>
           <strong>{formatSignedPercentBps(priceImpactBps)}</strong>
-          <small>{totalPool === 0n ? "First bet impact included" : "Current pool included"}</small>
+          <small>{canQuote ? (totalPool === 0n ? "First bet impact included" : "Current pool included") : "Betting locked"}</small>
         </div>
         <button
           className="button ghost icon-button"
-          disabled={!canQuote || upPreview.isFetching || downPreview.isFetching}
+          disabled={!canPreview || upPreview.isFetching || downPreview.isFetching}
           onClick={() => {
             void upPreview.refetch();
             void downPreview.refetch();

@@ -80,6 +80,11 @@ Each `tick` reads the active round and performs at most one state transition:
 - `Settled`: call `cleanup(roundId, CLEANUP_BATCH_SIZE)`.
 - `Cleaned`: call `startRound` for the next round.
 
+Numeric `cast` reads are normalized to plain base-10 integers before shell comparisons. This keeps
+newer Foundry output such as `1778035947[1.778e9]` from blocking `stopBet` / `settle` progression.
+If a transient RPC error leaves a required numeric read empty, the runner skips that tick and tries
+again on the next loop iteration.
+
 The runner does not weaken contract permissions. `startRound` still requires the configured
 on-chain operator. `stopBet`, `settle`, and `cleanup` are permissionless in the contract after their
 respective timing/state gates, but the runner signs them with the operator key for operational
