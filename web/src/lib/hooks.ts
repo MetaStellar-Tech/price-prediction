@@ -270,6 +270,13 @@ export function useMarketState(address?: Address) {
     args: [roundId],
     query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
   });
+  const roundFeeBpsRead = useReadContract({
+    address: config.marketAddress,
+    abi: marketAbi,
+    functionName: "roundFeeBps",
+    args: [roundId],
+    query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
+  });
   const latestBtcPriceRead = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
@@ -325,6 +332,7 @@ export function useMarketState(address?: Address) {
     roundId,
     round: roundRead.data,
     participantCount: participantCountRead.data,
+    roundFeeBps: roundFeeBpsRead.data,
     latestBtcPriceE8: latestBtcPriceRead.data,
     position: positionRead.data,
     events: events.data ?? [],
@@ -334,12 +342,14 @@ export function useMarketState(address?: Address) {
       currentRoundId.isLoading ||
       roundRead.isLoading ||
       participantCountRead.isLoading ||
+      roundFeeBpsRead.isLoading ||
       latestBtcPriceRead.isLoading ||
       positionRead.isLoading,
     refetch: () => {
       void currentRoundId.refetch();
       void roundRead.refetch();
       void participantCountRead.refetch();
+      void roundFeeBpsRead.refetch();
       void latestBtcPriceRead.refetch();
       void positionRead.refetch();
       void events.refetch();

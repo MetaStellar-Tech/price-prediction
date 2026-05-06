@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-04-30
+Last updated: 2026-05-06
 
 ## Completed And Verified
 
@@ -36,6 +36,8 @@ Last updated: 2026-04-30
   continuous `loop` maintenance.
 - [x] Operator runner sends now use a configurable `OPERATOR_GAS_PRICE`, defaulting to `1gwei`, so
   routine maintenance transactions do not rely on potentially higher RPC fee suggestions.
+- [x] Operator runner suppresses Foundry nightly-build warnings by default with
+  `FOUNDRY_DISABLE_NIGHTLY_WARNING=true`.
 - [x] Repo-local Hyperliquid live market-maker harness added for reusable maker wallets, funding,
   approvals, balanced low-cost betting, post-cleanup rebalancing, and review report generation.
 - [x] Live market-maker harness skips near-expiry betting windows, parses `previewBet` shares across
@@ -73,9 +75,9 @@ Last updated: 2026-04-30
 - [x] Frontend bet flow includes market custom errors in the ABI, disables the bet button outside
   the active betting window, and maps `InvalidState`, `BetWindowClosed`, `InvalidAmount`, and
   `SlippageExceeded` failures to user-readable messages.
-- [x] Frontend bet ticket shows live `previewBet` execution details, including estimated shares,
-  minimum shares, average price, before/after price, and first-bet price impact; bet submission
-  refreshes the quote immediately before sending and defaults to a 1 USDC stake with 10% slippage.
+- [x] Frontend bet ticket shows live Up/Down winning-payout estimates from `previewBet`, includes
+  first-bet price impact, hides raw share amounts from the user-facing ticket, and defaults to a 1
+  USDC stake with 80% slippage.
 - [x] Frontend bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas
   limits for market writes, and maps RPC rate-limit failures to retry guidance instead of showing
   raw viem contract-call traces.

@@ -48,6 +48,13 @@ export const marketAbi = [
   },
   {
     type: "function",
+    name: "roundFeeBps",
+    stateMutability: "view",
+    inputs: [{ name: "roundId", type: "uint256" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "positions",
     stateMutability: "view",
     inputs: [

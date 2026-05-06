@@ -30,6 +30,7 @@ OPERATOR_PRIVATE_KEY=
 CLEANUP_BATCH_SIZE=50
 OPERATOR_TICK_SECONDS=15
 OPERATOR_GAS_PRICE=1gwei
+FOUNDRY_DISABLE_NIGHTLY_WARNING=true
 OPERATOR_PRIORITY_GAS_PRICE=
 ```
 
@@ -40,6 +41,8 @@ Routine market maintenance should use `OPERATOR_PRIVATE_KEY`.
 to `1gwei` to keep routine operator maintenance costs low. Increase it if HyperEVM rejects or
 delays transactions during a congested period, or set it to an empty value to let `cast` and the RPC
 estimate fees automatically. `OPERATOR_PRIORITY_GAS_PRICE` is optional and is only passed when set.
+`FOUNDRY_DISABLE_NIGHTLY_WARNING` defaults to `true` inside the runner so Foundry nightly-build
+warnings do not pollute routine operator output.
 
 ## Commands
 

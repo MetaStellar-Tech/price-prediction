@@ -62,9 +62,9 @@ npm run build
 - Market state uses a fast UI cadence for active rounds: contract state every 2 seconds, bet events
   every 3 seconds, user bet history every 5 seconds, Hyperliquid mids every 3 seconds, and countdown
   labels re-render locally every second.
-- Bet actions are disabled outside the active betting window, show a live `previewBet` quote with
-  first-bet price impact included, default to a 1 USDC stake and 10% slippage limit, refresh the
-  quote immediately before submission, and decode market custom errors into user-readable messages.
+- Bet actions are disabled outside the active betting window, show live Up/Down winning-payout
+  estimates from `previewBet` with first-bet price impact included, default to a 1 USDC stake and
+  80% slippage limit, and decode market custom errors into user-readable messages.
 - Bet submission reuses the visible quote for `minSharesOut`, supplies explicit gas limits for
   market writes, and maps RPC rate-limit failures to retry guidance to avoid surfacing raw viem
   contract-call traces to users.

@@ -43,7 +43,7 @@ function marketActionErrorMessage(error: unknown) {
     return "Enter a positive bet amount.";
   }
   if (message.includes("SlippageExceeded")) {
-    return "Final shares were below your slippage limit. Refresh the quote or choose a wider limit.";
+    return "Final quote was below your slippage limit. Refresh the quote or choose a wider limit.";
   }
   if (message.toLowerCase().includes("rate limited")) {
     return "The HyperEVM RPC is rate limiting contract simulation right now. Wait a few seconds and retry; the app now avoids extra pre-submit calls where possible.";
@@ -51,17 +51,39 @@ function marketActionErrorMessage(error: unknown) {
   return message || "Market action failed.";
 }
 
-const SLIPPAGE_OPTIONS_BPS = [DEFAULT_SLIPPAGE_BPS, 500, 300] as const;
-
-function formatSharePriceBps(value?: bigint) {
-  if (value === undefined) return "--";
-  return `${formatNumber(Number(value) / 10_000, 4)} USDC/share`;
-}
+const BPS = 10_000n;
+const SLIPPAGE_OPTIONS_BPS = [DEFAULT_SLIPPAGE_BPS, 1_000, 500] as const;
 
 function formatSignedPercentBps(value?: number) {
   if (value === undefined || !Number.isFinite(value)) return "--";
   const prefix = value > 0 ? "+" : "";
   return `${prefix}${formatNumber(value / 100, 2)}%`;
+}
+
+function formatSignedTokenDelta(value?: bigint, decimals = 6) {
+  if (value === undefined) return "--";
+  const prefix = value >= 0n ? "+" : "-";
+  const magnitude = value >= 0n ? value : -value;
+  return `${prefix}${formatToken(magnitude, decimals, 2)} USDC`;
+}
+
+function estimateWinningPayout(
+  round: NonNullable<ReturnType<typeof useMarketState>["round"]> | undefined,
+  direction: 0 | 1,
+  amount?: bigint,
+  shares?: bigint,
+  feeBps?: bigint,
+) {
+  if (!round || amount === undefined || shares === undefined || feeBps === undefined) return undefined;
+  const upPoolAfter = round[7] + (direction === 0 ? amount : 0n);
+  const downPoolAfter = round[8] + (direction === 1 ? amount : 0n);
+  const upSharesAfter = round[9] + (direction === 0 ? shares : 0n);
+  const downSharesAfter = round[10] + (direction === 1 ? shares : 0n);
+  const winnerShares = direction === 0 ? upSharesAfter : downSharesAfter;
+  if (winnerShares === 0n) return undefined;
+  const loserPool = direction === 0 ? downPoolAfter : upPoolAfter;
+  const fee = (loserPool * feeBps) / BPS;
+  return ((upPoolAfter + downPoolAfter - fee) * shares) / winnerShares;
 }
 
 export function MarketPanel() {
@@ -90,8 +112,11 @@ export function MarketPanel() {
     roundState === 1 || roundState === 2
       ? secondsUntil(round?.[4] as bigint | undefined) === 0
       : false;
-  const canBet = account.isConnected && roundState === 1 && secondsUntil(round?.[3] as bigint | undefined) > 0;
-  const preview = useBetPreview(direction, amount, canBet);
+  const canQuote = roundState === 1 && secondsUntil(round?.[3] as bigint | undefined) > 0;
+  const canBet = account.isConnected && canQuote;
+  const upPreview = useBetPreview(0, amount, canQuote);
+  const downPreview = useBetPreview(1, amount, canQuote);
+  const preview = direction === 0 ? upPreview : downPreview;
   const totalPool = (round?.[7] ?? 0n) + (round?.[8] ?? 0n);
   const upPool = Number(formatUnits(round?.[7] ?? 0n, market.decimals));
   const downPool = Number(formatUnits(round?.[8] ?? 0n, market.decimals));
@@ -99,24 +124,40 @@ export function MarketPanel() {
   const btcMid = mids.data ? Number(mids.data.BTC ?? mids.data["BTC/USDC"]) : undefined;
   const stopCountdown = formatCountdown(secondsUntil(round?.[3] as bigint | undefined));
   const settleCountdown = formatCountdown(secondsUntil(round?.[4] as bigint | undefined));
-  const quotedShares = preview.data?.[3];
-  const minSharesOut =
-    quotedShares === undefined ? undefined : (quotedShares * BigInt(10_000 - slippageBps)) / 10_000n;
   const beforePriceBps = preview.data?.[0];
   const afterPriceBps = preview.data?.[1];
-  const averagePriceBps = preview.data?.[2];
   const priceImpactBps =
     beforePriceBps && afterPriceBps !== undefined
       ? Number(((afterPriceBps - beforePriceBps) * 10_000n) / beforePriceBps)
       : undefined;
+  const upPotentialPayout = estimateWinningPayout(
+    round,
+    0,
+    upPreview.parsedAmount,
+    upPreview.data?.[3],
+    market.roundFeeBps,
+  );
+  const downPotentialPayout = estimateWinningPayout(
+    round,
+    1,
+    downPreview.parsedAmount,
+    downPreview.data?.[3],
+    market.roundFeeBps,
+  );
+  const upPotentialNet =
+    upPotentialPayout === undefined || upPreview.parsedAmount === undefined
+      ? undefined
+      : upPotentialPayout - upPreview.parsedAmount;
+  const downPotentialNet =
+    downPotentialPayout === undefined || downPreview.parsedAmount === undefined
+      ? undefined
+      : downPotentialPayout - downPreview.parsedAmount;
 
   const position = useMemo(() => {
     const data = market.position;
     return {
       upStake: data?.[0],
       downStake: data?.[1],
-      upShares: data?.[2],
-      downShares: data?.[3],
     };
   }, [market.position]);
 
@@ -293,38 +334,37 @@ export function MarketPanel() {
 
       <div className="quote-panel">
         <div>
-          <span>Estimated shares</span>
-          <strong>{formatToken(quotedShares, market.decimals, 4)}</strong>
-          <small>Minimum: {formatToken(minSharesOut, market.decimals, 4)}</small>
+          <span>If Up wins</span>
+          <strong>{formatToken(upPotentialPayout, market.decimals, 2)} USDC</strong>
+          <small>Net {formatSignedTokenDelta(upPotentialNet, market.decimals)}</small>
         </div>
         <div>
-          <span>Average price</span>
-          <strong>{formatSharePriceBps(averagePriceBps)}</strong>
-          <small>
-            {formatSharePriceBps(beforePriceBps)} to {formatSharePriceBps(afterPriceBps)}
-          </small>
+          <span>If Down wins</span>
+          <strong>{formatToken(downPotentialPayout, market.decimals, 2)} USDC</strong>
+          <small>Net {formatSignedTokenDelta(downPotentialNet, market.decimals)}</small>
         </div>
         <div>
-          <span>Price impact</span>
+          <span>Quote impact</span>
           <strong>{formatSignedPercentBps(priceImpactBps)}</strong>
           <small>{totalPool === 0n ? "First bet impact included" : "Current pool included"}</small>
         </div>
         <button
           className="button ghost icon-button"
-          disabled={!canBet || preview.isFetching}
-          onClick={() => preview.refetch()}
+          disabled={!canQuote || upPreview.isFetching || downPreview.isFetching}
+          onClick={() => {
+            void upPreview.refetch();
+            void downPreview.refetch();
+          }}
           title="Refresh quote"
           type="button"
         >
-          <RefreshCw className={preview.isFetching ? "spin" : ""} size={17} />
+          <RefreshCw className={upPreview.isFetching || downPreview.isFetching ? "spin" : ""} size={17} />
         </button>
       </div>
 
       <div className="position-strip">
         <span>Your Up stake: {formatToken(position.upStake, market.decimals)} USDC</span>
         <span>Your Down stake: {formatToken(position.downStake, market.decimals)} USDC</span>
-        <span>Your Up shares: {formatToken(position.upShares, market.decimals)}</span>
-        <span>Your Down shares: {formatToken(position.downShares, market.decimals)}</span>
       </div>
 
       <div className="action-row">
