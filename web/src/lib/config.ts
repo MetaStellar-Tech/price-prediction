@@ -1,6 +1,12 @@
 import type { Address } from "viem";
 
 const env = import.meta.env;
+const envRecord = env as Record<string, string | undefined>;
+
+function numberEnv(name: string, fallback: number) {
+  const value = Number(envRecord[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 export const HYPEREVM_CHAIN_ID = 999;
 export const HYPE_SYSTEM_ADDRESS = "0x2222222222222222222222222222222222222222" as Address;
@@ -24,6 +30,16 @@ export const config = {
   stakeTokenAddress:
     (env.VITE_STAKE_TOKEN_ADDRESS as Address | undefined) ??
     "0xb88339CB7199b77E23DB6E890353E22632Ba630f",
+};
+
+export const polling = {
+  marketReadMs: numberEnv("VITE_MARKET_READ_REFETCH_MS", 10_000),
+  marketEventsMs: numberEnv("VITE_MARKET_EVENTS_REFETCH_MS", 30_000),
+  userEventsMs: numberEnv("VITE_USER_EVENTS_REFETCH_MS", 60_000),
+  coreBalancesMs: numberEnv("VITE_CORE_BALANCES_REFETCH_MS", 60_000),
+  accountAbstractionMs: numberEnv("VITE_ACCOUNT_ABSTRACTION_REFETCH_MS", 180_000),
+  midsMs: numberEnv("VITE_MIDS_REFETCH_MS", 10_000),
+  betPreviewMs: numberEnv("VITE_BET_PREVIEW_REFETCH_MS", 3_000),
 };
 
 export const hyperEvm = {

@@ -1,12 +1,11 @@
 import { Coins, Gauge, ShieldCheck, WalletCards } from "lucide-react";
-import { useAccountState } from "../lib/hooks";
+import type { AccountState } from "../lib/hooks";
 import { HYPEREVM_CHAIN_ID } from "../lib/config";
 import { coreBalance } from "../lib/hyperliquid";
 import { compactAddress, formatNumber, formatToken } from "../lib/format";
 import { MetricCard } from "./MetricCard";
 
-export function AccountPanel() {
-  const account = useAccountState();
+export function AccountPanel({ account }: { account: AccountState }) {
   const coreUsdc = coreBalance(account.coreBalances, "USDC");
   const coreHype = coreBalance(account.coreBalances, "HYPE");
   const isReady = account.isConnected && account.chainId === HYPEREVM_CHAIN_ID;

@@ -108,9 +108,13 @@ interaction flowing at low cost:
 
 - It only reacts after a non-maker participant appears in the current round.
 - In default `WATCH_MODE=auto`, it uses websocket subscriptions only when `WS_RPC_URL` is set.
-  Otherwise it scans market `BetPlaced` logs every `EVENT_POLL_SECONDS`, defaulting to `2`.
+  Otherwise it scans market `BetPlaced` logs every `EVENT_POLL_SECONDS`, defaulting to `10`, to
+  avoid putting avoidable load on the public Hyperliquid EVM RPC endpoint.
 - `POLL_SECONDS` remains a heartbeat and fallback state-check interval in auto/log/websocket modes.
-  In `WATCH_MODE=poll`, it is the full state polling interval.
+  It defaults to `45`. In `WATCH_MODE=poll`, it is the full state polling interval.
+- In event-log modes, maker-originated `BetPlaced` events are ignored before any chain state reads.
+  Non-maker events drive immediate market-maker evaluation. Full participant reconciliation is only
+  performed every `ACTIVITY_RECONCILE_SECONDS`, defaulting to `180`, as a missed-event safety net.
 - It prioritizes the empty or smaller pool to reduce no-contest risk.
 - It keeps aggregate maker exposure near a `40/60` to `60/40` Up/Down band.
 - It caps each maker at `6 USDC` per round and all makers at `24 USDC` per round.
@@ -162,13 +166,15 @@ GAS_PRICE_WEI=3100000000
 MARKET_GAS_LIMIT=500000
 TOKEN_GAS_LIMIT=80000
 HYPE_TRANSFER_GAS_LIMIT=21000
-MAKER_BET_DEADLINE_BUFFER_SECONDS=8
 WATCH_MODE=auto
-EVENT_POLL_SECONDS=2
+POLL_SECONDS=45
+EVENT_POLL_SECONDS=10
+ACTIVITY_RECONCILE_SECONDS=180
 LOG_LOOKBACK_BLOCKS=4
 LOG_QUERY_BLOCK_SPAN=50
-RPC_TRANSIENT_RETRIES=6
-RPC_TRANSIENT_BACKOFF_SECONDS=8
+RPC_TRANSIENT_RETRIES=3
+RPC_TRANSIENT_BACKOFF_SECONDS=30
+MAKER_BET_DEADLINE_BUFFER_SECONDS=8
 WS_RPC_URL=
 WS_RECONNECT_SECONDS=3
 ```
@@ -186,6 +192,7 @@ websocket URL. If `WS_RPC_URL` is set and the websocket connection closes, the l
 `eth_getLogs` range limit.
 
 `RPC_TRANSIENT_RETRIES` and `RPC_TRANSIENT_BACKOFF_SECONDS` apply only to read-side RPC operations
-such as `cast call`, `cast block-number`, `cast block`, `cast balance`, and `cast logs`.
-Transaction sends are not retried automatically, because a failed receipt or RPC response may still
-correspond to a transaction that was accepted by the network.
+such as `cast call`, `cast block-number`, `cast block`, `cast balance`, and `cast logs`. The
+defaults are intentionally conservative because the public Hyperliquid endpoint rate-limits bursty
+polling. Transaction sends are not retried automatically, because a failed receipt or RPC response
+may still correspond to a transaction that was accepted by the network.

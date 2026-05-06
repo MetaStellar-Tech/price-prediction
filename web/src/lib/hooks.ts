@@ -14,7 +14,6 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   useAccount,
   useBalance,
-  useBlockNumber,
   usePublicClient,
   useReadContract,
   useReadContracts,
@@ -28,6 +27,7 @@ import {
   CLAIM_PAYOUT_GAS_LIMIT,
   SETTLE_GAS_LIMIT,
   config,
+  polling,
 } from "./config";
 import {
   getAllMids,
@@ -77,12 +77,6 @@ const HYPERLIQUID_AGENT_KEY_PREFIX = "price-prediction:hyperliquid-agent:";
 const HYPERLIQUID_AGENT_NAME = "PricePredict";
 const HYPERLIQUID_AGENT_VALID_UNTIL_SKEW_MS = 60_000;
 const HYPERLIQUID_AGENT_VALID_FOR_MS = 90 * 24 * 60 * 60 * 1000;
-const MARKET_READ_REFETCH_MS = 2_000;
-const MARKET_EVENTS_REFETCH_MS = 3_000;
-const USER_EVENTS_REFETCH_MS = 5_000;
-const MIDS_REFETCH_MS = 3_000;
-const BET_PREVIEW_REFETCH_MS = 1_000;
-
 function exchangeApiBaseUrl() {
   return config.hyperliquidExchangeUrl.replace(/\/exchange\/?$/, "");
 }
@@ -206,13 +200,13 @@ export function useAccountState() {
     queryKey: ["core-balances", address],
     queryFn: () => getSpotBalances(address),
     enabled: Boolean(address),
-    refetchInterval: 15_000,
+    refetchInterval: polling.coreBalancesMs,
   });
   const accountAbstraction = useQuery({
     queryKey: ["account-abstraction", address],
     queryFn: () => getUserAbstraction(address),
     enabled: Boolean(address),
-    refetchInterval: 60_000,
+    refetchInterval: polling.accountAbstractionMs,
   });
 
   return {
@@ -242,15 +236,16 @@ export function useAccountState() {
   };
 }
 
+export type AccountState = ReturnType<typeof useAccountState>;
+
 export function useMarketState(address?: Address) {
   const { decimals } = useTokenMeta();
   const publicClient = usePublicClient();
-  const block = useBlockNumber({ watch: true });
   const currentRoundId = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "currentRoundId",
-    query: { refetchInterval: MARKET_READ_REFETCH_MS },
+    query: { refetchInterval: polling.marketReadMs },
   });
 
   const roundId = currentRoundId.data ?? 0n;
@@ -261,38 +256,38 @@ export function useMarketState(address?: Address) {
     abi: marketAbi,
     functionName: "rounds",
     args: [roundId],
-    query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
+    query: { enabled: enabledRound, refetchInterval: polling.marketReadMs },
   });
   const participantCountRead = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "participantCount",
     args: [roundId],
-    query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
+    query: { enabled: enabledRound, refetchInterval: polling.marketReadMs },
   });
   const roundFeeBpsRead = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "roundFeeBps",
     args: [roundId],
-    query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
+    query: { enabled: enabledRound, refetchInterval: polling.marketReadMs },
   });
   const latestBtcPriceRead = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "latestBtcPriceE8",
-    query: { enabled: enabledRound, refetchInterval: MARKET_READ_REFETCH_MS },
+    query: { enabled: enabledRound, refetchInterval: polling.marketReadMs },
   });
   const positionRead = useReadContract({
     address: config.marketAddress,
     abi: marketAbi,
     functionName: "positions",
     args: [roundId, address ?? "0x0000000000000000000000000000000000000000"],
-    query: { enabled: enabledRound && Boolean(address), refetchInterval: MARKET_READ_REFETCH_MS },
+    query: { enabled: enabledRound && Boolean(address), refetchInterval: polling.marketReadMs },
   });
 
   const events = useQuery({
-    queryKey: ["bet-events", roundId.toString(), block.data?.toString()],
+    queryKey: ["bet-events", roundId.toString()],
     queryFn: async () => {
       if (!publicClient || !enabledRound) return [];
       return publicClient.getContractEvents({
@@ -305,11 +300,11 @@ export function useMarketState(address?: Address) {
       });
     },
     enabled: Boolean(publicClient && enabledRound),
-    refetchInterval: MARKET_EVENTS_REFETCH_MS,
+    refetchInterval: polling.marketEventsMs,
   });
 
   const userEvents = useQuery({
-    queryKey: ["user-bet-events", address, block.data?.toString()],
+    queryKey: ["user-bet-events", address],
     queryFn: async () => {
       if (!publicClient || !address) return [];
       return publicClient.getContractEvents({
@@ -322,7 +317,7 @@ export function useMarketState(address?: Address) {
       });
     },
     enabled: Boolean(publicClient && address),
-    refetchInterval: USER_EVENTS_REFETCH_MS,
+    refetchInterval: polling.userEventsMs,
   });
 
   const metrics = useMemo(() => summarizeBetEvents(events.data), [events.data]);
@@ -361,9 +356,8 @@ export function useMarketState(address?: Address) {
 export function useUserBetHistory(address?: Address) {
   const { decimals } = useTokenMeta();
   const publicClient = usePublicClient();
-  const block = useBlockNumber({ watch: true });
   const userEvents = useQuery({
-    queryKey: ["user-bet-history-events", address, block.data?.toString()],
+    queryKey: ["user-bet-history-events", address],
     queryFn: async () => {
       if (!publicClient || !address) return [];
       return publicClient.getContractEvents({
@@ -376,7 +370,7 @@ export function useUserBetHistory(address?: Address) {
       });
     },
     enabled: Boolean(publicClient && address),
-    refetchInterval: USER_EVENTS_REFETCH_MS,
+    refetchInterval: polling.userEventsMs,
   });
 
   const roundIds = useMemo(() => {
@@ -395,7 +389,7 @@ export function useUserBetHistory(address?: Address) {
       functionName: "rounds",
       args: [roundId],
     })),
-    query: { enabled: roundIds.length > 0, refetchInterval: USER_EVENTS_REFETCH_MS },
+    query: { enabled: roundIds.length > 0, refetchInterval: polling.userEventsMs },
   });
 
   const roundsById = useMemo(() => {
@@ -480,7 +474,7 @@ export function useMids() {
   return useQuery({
     queryKey: ["hyperliquid-mids"],
     queryFn: getAllMids,
-    refetchInterval: MIDS_REFETCH_MS,
+    refetchInterval: polling.midsMs,
   });
 }
 
@@ -693,7 +687,7 @@ export function useBetPreview(direction: 0 | 1, amount: string, enabled: boolean
     args: parsedAmount ? [direction, parsedAmount] : undefined,
     query: {
       enabled: enabled && parsedAmount !== undefined,
-      refetchInterval: BET_PREVIEW_REFETCH_MS,
+      refetchInterval: polling.betPreviewMs,
     },
   });
 

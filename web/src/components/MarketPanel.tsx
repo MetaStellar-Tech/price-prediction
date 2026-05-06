@@ -15,11 +15,11 @@ import {
   directionLabels,
   outcomeLabels,
   roundStateLabels,
-  useAccountState,
   useBetFlow,
   useBetPreview,
   useMarketState,
   useMids,
+  type AccountState,
 } from "../lib/hooks";
 import {
   formatCountdown,
@@ -86,8 +86,7 @@ function estimateWinningPayout(
   return ((upPoolAfter + downPoolAfter - fee) * shares) / winnerShares;
 }
 
-export function MarketPanel() {
-  const account = useAccountState();
+export function MarketPanel({ account }: { account: AccountState }) {
   const market = useMarketState(account.address);
   const mids = useMids();
   const [direction, setDirection] = useState<0 | 1>(0);

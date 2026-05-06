@@ -4,6 +4,7 @@ import { WagmiProvider } from "wagmi";
 import { ArrowRight, BarChart3, Github, Shield, WalletCards } from "lucide-react";
 import { wagmiConfig } from "./lib/wagmi";
 import { config } from "./lib/config";
+import { useAccountState } from "./lib/hooks";
 import { WalletButton } from "./components/WalletButton";
 import { AccountPanel } from "./components/AccountPanel";
 import { MarketPanel } from "./components/MarketPanel";
@@ -102,15 +103,17 @@ function Landing({ onOpenApp }: { onOpenApp: () => void }) {
 }
 
 function TradingApp() {
+  const account = useAccountState();
+
   return (
     <main className="dashboard">
       <div className="dashboard-main">
-        <MarketPanel />
-        <HistoryPanel />
+        <MarketPanel account={account} />
+        <HistoryPanel account={account} />
       </div>
       <aside className="dashboard-side">
-        <AccountPanel />
-        <RechargePanel />
+        <AccountPanel account={account} />
+        <RechargePanel account={account} />
       </aside>
     </main>
   );
@@ -125,4 +128,3 @@ export default function App() {
     </WagmiProvider>
   );
 }
-

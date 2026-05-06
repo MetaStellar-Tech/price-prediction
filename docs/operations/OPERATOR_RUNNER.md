@@ -28,7 +28,9 @@ Required to advance rounds:
 ```sh
 OPERATOR_PRIVATE_KEY=
 CLEANUP_BATCH_SIZE=50
-OPERATOR_TICK_SECONDS=15
+OPERATOR_TICK_SECONDS=30
+OPERATOR_RPC_TRANSIENT_RETRIES=3
+OPERATOR_RPC_TRANSIENT_BACKOFF_SECONDS=30
 OPERATOR_GAS_PRICE=1gwei
 FOUNDRY_DISABLE_NIGHTLY_WARNING=true
 OPERATOR_PRIORITY_GAS_PRICE=
@@ -41,6 +43,9 @@ Routine market maintenance should use `OPERATOR_PRIVATE_KEY`.
 to `1gwei` to keep routine operator maintenance costs low. Increase it if HyperEVM rejects or
 delays transactions during a congested period, or set it to an empty value to let `cast` and the RPC
 estimate fees automatically. `OPERATOR_PRIORITY_GAS_PRICE` is optional and is only passed when set.
+`OPERATOR_TICK_SECONDS` defaults to `30` to avoid avoidable pressure on the public Hyperliquid EVM
+RPC endpoint. Read-side transient RPC failures back off with `OPERATOR_RPC_TRANSIENT_RETRIES` and
+`OPERATOR_RPC_TRANSIENT_BACKOFF_SECONDS`; transaction sends are not retried automatically.
 `FOUNDRY_DISABLE_NIGHTLY_WARNING` defaults to `true` inside the runner so Foundry nightly-build
 warnings do not pollute routine operator output.
 
@@ -72,7 +77,8 @@ Run continuously:
 
 ## Tick Policy
 
-Each `tick` reads the active round and performs at most one state transition:
+Each `tick` reads the active round once, reads the chain timestamp once, and performs at most one
+state transition:
 
 - `currentRoundId == 0`: call `startRound`.
 - `Betting`: after `stopBetTime`, call `stopBet`.
@@ -82,8 +88,8 @@ Each `tick` reads the active round and performs at most one state transition:
 
 Numeric `cast` reads are normalized to plain base-10 integers before shell comparisons. This keeps
 newer Foundry output such as `1778035947[1.778e9]` from blocking `stopBet` / `settle` progression.
-If a transient RPC error leaves a required numeric read empty, the runner skips that tick and tries
-again on the next loop iteration.
+Transient read-side RPC errors back off before retrying; if retries are exhausted, the runner skips
+that tick and tries again on the next loop iteration.
 
 The runner does not weaken contract permissions. `startRound` still requires the configured
 on-chain operator. `stopBet`, `settle`, and `cleanup` are permissionless in the contract after their

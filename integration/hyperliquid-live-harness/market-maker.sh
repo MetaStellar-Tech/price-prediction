@@ -39,10 +39,11 @@ ROUND_POOL_TARGET_BPS="${ROUND_POOL_TARGET_BPS:-6000}"
 MAKER_EXPOSURE_MIN_BPS="${MAKER_EXPOSURE_MIN_BPS:-4000}"
 MAKER_EXPOSURE_MAX_BPS="${MAKER_EXPOSURE_MAX_BPS:-6000}"
 SLIPPAGE_BPS="${SLIPPAGE_BPS:-500}"
-POLL_SECONDS="${POLL_SECONDS:-12}"
-EVENT_POLL_SECONDS="${EVENT_POLL_SECONDS:-2}"
-RPC_TRANSIENT_RETRIES="${RPC_TRANSIENT_RETRIES:-6}"
-RPC_TRANSIENT_BACKOFF_SECONDS="${RPC_TRANSIENT_BACKOFF_SECONDS:-8}"
+POLL_SECONDS="${POLL_SECONDS:-45}"
+EVENT_POLL_SECONDS="${EVENT_POLL_SECONDS:-10}"
+ACTIVITY_RECONCILE_SECONDS="${ACTIVITY_RECONCILE_SECONDS:-180}"
+RPC_TRANSIENT_RETRIES="${RPC_TRANSIENT_RETRIES:-3}"
+RPC_TRANSIENT_BACKOFF_SECONDS="${RPC_TRANSIENT_BACKOFF_SECONDS:-30}"
 LOG_LOOKBACK_BLOCKS="${LOG_LOOKBACK_BLOCKS:-4}"
 LOG_QUERY_BLOCK_SPAN="${LOG_QUERY_BLOCK_SPAN:-50}"
 WATCH_MODE="${WATCH_MODE:-auto}"
@@ -425,6 +426,7 @@ MAKER_EXPOSURE_MAX_BPS=$MAKER_EXPOSURE_MAX_BPS
 SLIPPAGE_BPS=$SLIPPAGE_BPS
 POLL_SECONDS=$POLL_SECONDS
 EVENT_POLL_SECONDS=$EVENT_POLL_SECONDS
+ACTIVITY_RECONCILE_SECONDS=$ACTIVITY_RECONCILE_SECONDS
 RPC_TRANSIENT_RETRIES=$RPC_TRANSIENT_RETRIES
 RPC_TRANSIENT_BACKOFF_SECONDS=$RPC_TRANSIENT_BACKOFF_SECONDS
 LOG_LOOKBACK_BLOCKS=$LOG_LOOKBACK_BLOCKS
@@ -778,13 +780,34 @@ do_market_make_round() {
 
 LAST_ROUND=0
 LAST_EXTERNAL=0
+LAST_RECONCILE=0
+SEEN_EXTERNAL_KEYS="|"
+
+external_seen() {
+  case "$SEEN_EXTERNAL_KEYS" in
+    *"|$1|"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+remember_external() {
+  local key="$1"
+  if ! external_seen "$key"; then
+    SEEN_EXTERNAL_KEYS="${SEEN_EXTERNAL_KEYS}${key}|"
+  fi
+}
 
 process_market_activity() {
   local reason="${1:-tick}"
   local event_round="${2:-}"
   local event_account="${3:-}"
   local event_tx="${4:-}"
-  local round_id state external_count
+  local round_id state external_count now seen_key
+
+  if [ "$reason" = "bet" ] && is_maker "$event_account"; then
+    echo "Received maker BetPlaced in round $event_round from $event_account tx=$event_tx; skipping chain state read."
+    return
+  fi
 
   round_id="$(current_round_id)"
   if [ "$round_id" = "0" ]; then
@@ -796,6 +819,8 @@ process_market_activity() {
   if [ "$round_id" != "$LAST_ROUND" ]; then
     LAST_ROUND="$round_id"
     LAST_EXTERNAL=0
+    LAST_RECONCILE=0
+    SEEN_EXTERNAL_KEYS="|"
     echo "Watching round $round_id state=$(state_name "$state")."
   fi
 
@@ -805,17 +830,30 @@ process_market_activity() {
   fi
 
   if [ "$state" = "1" ]; then
+    if [ "$reason" = "bet" ]; then
+      seen_key="${event_round}:$(lower "$event_account")"
+      if external_seen "$seen_key"; then
+        echo "Received already-counted external BetPlaced in round $round_id from $event_account tx=$event_tx; externalParticipants=$LAST_EXTERNAL."
+        return
+      fi
+      remember_external "$seen_key"
+      LAST_EXTERNAL=$((LAST_EXTERNAL + 1))
+      echo "Detected external participant activity in round $round_id from $event_account tx=$event_tx: $LAST_EXTERNAL"
+      do_market_make_round "$round_id"
+      return
+    fi
+
+    now="$(date +%s)"
+    if [ "$LAST_RECONCILE" -ne 0 ] && [ $((now - LAST_RECONCILE)) -lt "$ACTIVITY_RECONCILE_SECONDS" ]; then
+      echo "Round $round_id betting; event-driven maker idle."
+      return
+    fi
+    LAST_RECONCILE="$now"
     external_count="$(external_participant_count "$round_id")"
     if [ "$external_count" -gt "$LAST_EXTERNAL" ]; then
-      if [ "$reason" = "bet" ]; then
-        echo "Detected external participant activity in round $round_id from $event_account tx=$event_tx: $external_count"
-      else
-        echo "Detected external participant activity in round $round_id: $external_count"
-      fi
+      echo "Detected external participant activity in round $round_id during low-frequency reconcile: $external_count"
       LAST_EXTERNAL="$external_count"
       do_market_make_round "$round_id"
-    elif [ "$reason" = "bet" ]; then
-      echo "Received maker or already-counted BetPlaced in round $round_id from $event_account tx=$event_tx; externalParticipants=$external_count."
     else
       echo "Round $round_id betting; externalParticipants=$external_count."
     fi

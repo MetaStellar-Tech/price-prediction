@@ -10,7 +10,7 @@ import {
   spotMidPrice,
   spotTokenSizeDecimals,
 } from "../lib/hyperliquid";
-import { useAccountState, useHyperliquidExchange, useMids, useSpotMeta } from "../lib/hooks";
+import { useHyperliquidExchange, useMids, useSpotMeta, type AccountState } from "../lib/hooks";
 import { formatNumber } from "../lib/format";
 
 function rechargeErrorMessage(error: unknown): string {
@@ -32,8 +32,7 @@ function rechargeErrorMessage(error: unknown): string {
   return parts.join(" | ") || "Recharge action failed.";
 }
 
-export function RechargePanel() {
-  const account = useAccountState();
+export function RechargePanel({ account }: { account: AccountState }) {
   const mids = useMids();
   const spotMeta = useSpotMeta();
   const [usdcAmount, setUsdcAmount] = useState("25");

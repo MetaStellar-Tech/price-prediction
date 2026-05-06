@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Clock3 } from "lucide-react";
 import { formatUnits } from "viem";
-import { directionLabels, useAccountState, useUserBetHistory } from "../lib/hooks";
+import { directionLabels, useUserBetHistory, type AccountState } from "../lib/hooks";
 import { formatNumber, formatToken } from "../lib/format";
 
 function formatRoi(value?: number) {
@@ -9,8 +9,7 @@ function formatRoi(value?: number) {
   return `${prefix}${formatNumber(value / 100, 2)}%`;
 }
 
-export function HistoryPanel() {
-  const account = useAccountState();
+export function HistoryPanel({ account }: { account: AccountState }) {
   const history = useUserBetHistory(account.address);
   const rows = history.rows.slice(0, 10);
 

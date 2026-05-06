@@ -19,7 +19,9 @@ set +a
 RPC_URL="${RPC_URL:-https://rpc.hyperliquid.xyz/evm}"
 CHAIN_ID="${CHAIN_ID:-999}"
 CLEANUP_BATCH_SIZE="${CLEANUP_BATCH_SIZE:-50}"
-OPERATOR_TICK_SECONDS="${OPERATOR_TICK_SECONDS:-15}"
+OPERATOR_TICK_SECONDS="${OPERATOR_TICK_SECONDS:-30}"
+OPERATOR_RPC_TRANSIENT_RETRIES="${OPERATOR_RPC_TRANSIENT_RETRIES:-3}"
+OPERATOR_RPC_TRANSIENT_BACKOFF_SECONDS="${OPERATOR_RPC_TRANSIENT_BACKOFF_SECONDS:-30}"
 OPERATOR_GAS_PRICE="${OPERATOR_GAS_PRICE-1gwei}"
 FOUNDRY_DISABLE_NIGHTLY_WARNING="${FOUNDRY_DISABLE_NIGHTLY_WARNING:-true}"
 export FOUNDRY_DISABLE_NIGHTLY_WARNING
@@ -32,10 +34,6 @@ require_env() {
   fi
 }
 
-call_market() {
-  cast call --rpc-url "$RPC_URL" "$MARKET_ADDRESS" "$@"
-}
-
 first_uint() {
   awk 'match($0, /[0-9]+/) { print substr($0, RSTART, RLENGTH); exit }'
 }
@@ -45,6 +43,34 @@ is_uint() {
     ''|*[!0-9]*) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+is_transient_rpc_error() {
+  printf '%s' "$1" | grep -Eiq 'rate limited|-32005|too many requests|429|max retries exceeded|temporarily unavailable|timeout|timed out'
+}
+
+rpc_read() {
+  local attempt=1 output status
+  while true; do
+    if output="$("$@" 2>&1)"; then
+      printf '%s\n' "$output"
+      return 0
+    else
+      status=$?
+    fi
+    if is_transient_rpc_error "$output" && [ "$attempt" -lt "$OPERATOR_RPC_TRANSIENT_RETRIES" ]; then
+      echo "Transient operator RPC read error; backing off ${OPERATOR_RPC_TRANSIENT_BACKOFF_SECONDS}s (attempt $attempt/$OPERATOR_RPC_TRANSIENT_RETRIES)." >&2
+      sleep "$OPERATOR_RPC_TRANSIENT_BACKOFF_SECONDS"
+      attempt=$((attempt + 1))
+      continue
+    fi
+    printf '%s\n' "$output" >&2
+    return "$status"
+  done
+}
+
+call_market() {
+  rpc_read cast call --rpc-url "$RPC_URL" "$MARKET_ADDRESS" "$@"
 }
 
 send_market() {
@@ -84,37 +110,30 @@ current_operator() {
 }
 
 chain_timestamp() {
-  cast block latest --field timestamp --rpc-url "$RPC_URL" | first_uint
+  rpc_read cast block latest --field timestamp --rpc-url "$RPC_URL" | first_uint
 }
 
-round_field() {
+load_round() {
   local round_id="$1"
-  local field="$2"
-  local index
-  case "$field" in
-    state) index=1 ;;
-    outcome) index=2 ;;
-    startTime) index=3 ;;
-    stopBetTime) index=4 ;;
-    settleTime) index=5 ;;
-    basePriceE8) index=6 ;;
-    finalPriceE8) index=7 ;;
-    upPool) index=8 ;;
-    downPool) index=9 ;;
-    upShares) index=10 ;;
-    downShares) index=11 ;;
-    feeAmount) index=12 ;;
-    cleanupIndex) index=13 ;;
-    feeTransferred) index=14 ;;
-    *)
-      echo "Unknown round field: $field" >&2
-      exit 1
-      ;;
-  esac
-
-  call_market \
+  local csv
+  csv="$(call_market \
     "rounds(uint256)((uint8,uint8,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,bool))" \
-    "$round_id" | tr -d '() ' | awk -F, -v index="$index" '{print $index}' | first_uint
+    "$round_id" | tr -d '() ')"
+  IFS=, read -r \
+    ROUND_STATE \
+    ROUND_OUTCOME \
+    ROUND_START_TIME \
+    ROUND_STOP_BET_TIME \
+    ROUND_SETTLE_TIME \
+    ROUND_BASE_PRICE_E8 \
+    ROUND_FINAL_PRICE_E8 \
+    ROUND_UP_POOL \
+    ROUND_DOWN_POOL \
+    ROUND_UP_SHARES \
+    ROUND_DOWN_SHARES \
+    ROUND_FEE_AMOUNT \
+    ROUND_CLEANUP_INDEX \
+    ROUND_FEE_TRANSFERRED <<< "$csv"
 }
 
 state_name() {
@@ -142,19 +161,16 @@ print_status() {
     return
   fi
 
-  local state stop_time settle_time cleanup_index participant_count now
-  state="$(round_field "$round_id" state)"
-  stop_time="$(round_field "$round_id" stopBetTime)"
-  settle_time="$(round_field "$round_id" settleTime)"
-  cleanup_index="$(round_field "$round_id" cleanupIndex)"
+  local participant_count now
+  load_round "$round_id"
   participant_count="$(call_market "participantCount(uint256)(uint256)" "$round_id" | first_uint)"
   now="$(chain_timestamp)"
 
-  echo "state=$(state_name "$state")"
-  echo "stopBetTime=$stop_time"
-  echo "settleTime=$settle_time"
+  echo "state=$(state_name "$ROUND_STATE")"
+  echo "stopBetTime=$ROUND_STOP_BET_TIME"
+  echo "settleTime=$ROUND_SETTLE_TIME"
   echo "participantCount=$participant_count"
-  echo "cleanupIndex=$cleanup_index"
+  echo "cleanupIndex=$ROUND_CLEANUP_INDEX"
   echo "now=$now"
 }
 
@@ -186,41 +202,37 @@ tick() {
     return
   fi
 
-  local state now
-  state="$(round_field "$round_id" state)"
+  local now
+  load_round "$round_id"
   now="$(chain_timestamp)"
-  if ! is_uint "$state" || ! is_uint "$now"; then
-    echo "Unable to read round state or chain timestamp; state=$state now=$now."
+  if ! is_uint "$ROUND_STATE" || ! is_uint "$now"; then
+    echo "Unable to read round state or chain timestamp; state=$ROUND_STATE now=$now."
     return
   fi
 
-  case "$state" in
+  case "$ROUND_STATE" in
     1)
-      local stop_time
-      stop_time="$(round_field "$round_id" stopBetTime)"
-      if ! is_uint "$stop_time"; then
-        echo "Unable to read stopBetTime for round $round_id; stopBetTime=$stop_time now=$now."
+      if ! is_uint "$ROUND_STOP_BET_TIME"; then
+        echo "Unable to read stopBetTime for round $round_id; stopBetTime=$ROUND_STOP_BET_TIME now=$now."
         return
       fi
-      if [ "$now" -ge "$stop_time" ]; then
+      if [ "$now" -ge "$ROUND_STOP_BET_TIME" ]; then
         echo "Round $round_id betting window elapsed; stopping bets."
         send_market "$OPERATOR_PRIVATE_KEY" "stopBet()"
       else
-        echo "Round $round_id is betting; stopBetTime=$stop_time now=$now."
+        echo "Round $round_id is betting; stopBetTime=$ROUND_STOP_BET_TIME now=$now."
       fi
       ;;
     2)
-      local settle_time
-      settle_time="$(round_field "$round_id" settleTime)"
-      if ! is_uint "$settle_time"; then
-        echo "Unable to read settleTime for round $round_id; settleTime=$settle_time now=$now."
+      if ! is_uint "$ROUND_SETTLE_TIME"; then
+        echo "Unable to read settleTime for round $round_id; settleTime=$ROUND_SETTLE_TIME now=$now."
         return
       fi
-      if [ "$now" -ge "$settle_time" ]; then
+      if [ "$now" -ge "$ROUND_SETTLE_TIME" ]; then
         echo "Round $round_id settle time reached; settling."
         send_market "$OPERATOR_PRIVATE_KEY" "settle()"
       else
-        echo "Round $round_id is closed; settleTime=$settle_time now=$now."
+        echo "Round $round_id is closed; settleTime=$ROUND_SETTLE_TIME now=$now."
       fi
       ;;
     3)
@@ -232,7 +244,7 @@ tick() {
       send_market "$OPERATOR_PRIVATE_KEY" "startRound()"
       ;;
     *)
-      echo "Round $round_id has unsupported state $(state_name "$state"); no action."
+      echo "Round $round_id has unsupported state $(state_name "$ROUND_STATE"); no action."
       ;;
   esac
 }

@@ -27,6 +27,13 @@ VITE_HYPERLIQUID_INFO_URL=https://api.hyperliquid.xyz/info
 VITE_HYPERLIQUID_EXCHANGE_URL=https://api.hyperliquid.xyz/exchange
 VITE_MARKET_ADDRESS=0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7
 VITE_STAKE_TOKEN_ADDRESS=0xb88339CB7199b77E23DB6E890353E22632Ba630f
+VITE_MARKET_READ_REFETCH_MS=10000
+VITE_MARKET_EVENTS_REFETCH_MS=30000
+VITE_USER_EVENTS_REFETCH_MS=60000
+VITE_CORE_BALANCES_REFETCH_MS=60000
+VITE_ACCOUNT_ABSTRACTION_REFETCH_MS=180000
+VITE_MIDS_REFETCH_MS=10000
+VITE_BET_PREVIEW_REFETCH_MS=3000
 ```
 
 ## Commands
@@ -59,9 +66,11 @@ npm run build
   flow without requiring users to recover old browser storage or visit Hyperliquid settings.
 - HYPE spot order prices, order sizes, and follow-up Core-to-HyperEVM HYPE transfer amounts use the
   Hyperliquid SDK tick/lot-size formatters rather than fixed frontend precision.
-- Market state uses a fast UI cadence for active rounds: contract state every 2 seconds, bet events
-  every 3 seconds, user bet history every 5 seconds, Hyperliquid mids every 3 seconds, and countdown
-  labels re-render locally every second.
+- Market state uses a public-RPC-friendly default cadence: contract state every 10 seconds, market
+  bet events every 30 seconds, user bet history every 60 seconds, Hyperliquid mids every 10
+  seconds, and quote previews every 3 seconds. Countdown labels still re-render locally every
+  second without additional RPC calls. Deployments can override these intervals with the
+  `VITE_*_REFETCH_MS` variables above.
 - Bet actions are disabled outside the active betting window. While the current on-chain state is
   still `Betting`, the ticket continues to show live Up/Down winning-payout estimates from
   `previewBet`; if the local `stopBetTime` countdown has elapsed before the operator advances the

@@ -41,6 +41,9 @@ Last updated: 2026-05-06
 - [x] Operator runner normalizes `cast` numeric reads to plain base-10 integers before comparing
   timestamps, so Foundry output with bracketed scientific notation does not block `stopBet` or
   `settle` ticks.
+- [x] Operator runner defaults to lower-pressure public RPC usage with `OPERATOR_TICK_SECONDS=30`,
+  read-side transient RPC backoff, and a single `rounds(roundId)` read per tick instead of repeated
+  tuple reads for each field.
 - [x] Repo-local Hyperliquid live market-maker harness added for reusable maker wallets, funding,
   approvals, balanced low-cost betting, post-cleanup rebalancing, and review report generation.
 - [x] Live market-maker harness skips near-expiry betting windows, parses `previewBet` shares across
@@ -48,7 +51,7 @@ Last updated: 2026-05-06
   stale-window races instead of stopping the loop.
 - [x] Live market-maker harness `loop` defaults to `WATCH_MODE=auto`: it uses websocket
   `eth_subscribe` for `BetPlaced` logs only when `WS_RPC_URL` is explicitly set, otherwise it uses
-  low-latency `eth_getLogs` polling with `EVENT_POLL_SECONDS=2`; `WATCH_MODE=poll` remains
+  conservative `eth_getLogs` polling with `EVENT_POLL_SECONDS=10`; `WATCH_MODE=poll` remains
   available for the older state polling-only mode. Log polling chunks requests at
   `LOG_QUERY_BLOCK_SPAN=50`.
 - [x] Live market-maker harness loads its local wallet env before the repo-root `.env`, so root
@@ -60,6 +63,11 @@ Last updated: 2026-05-06
 - [x] Live market-maker harness treats transient read-side RPC failures, including Hyperliquid
   public RPC `-32005` rate limits, as recoverable with configurable backoff and without advancing
   the log polling cursor past unread chunks.
+- [x] Live market-maker harness defaults to lower-pressure public RPC usage:
+  `EVENT_POLL_SECONDS=10`, `POLL_SECONDS=45`, `ACTIVITY_RECONCILE_SECONDS=180`,
+  `RPC_TRANSIENT_RETRIES=3`, and `RPC_TRANSIENT_BACKOFF_SECONDS=30`; maker-originated
+  `BetPlaced` logs are skipped before chain reads, while full participant reconciliation is only
+  used as a low-frequency missed-event safety net.
 - [x] Vercel-ready pure frontend added under `web/` with landing page, wallet connect, HyperCore /
   HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
   claim, and user bet history.
@@ -81,9 +89,15 @@ Last updated: 2026-05-06
 - [x] Frontend HYPE top-up orders format spot order price, spot order size, and follow-up
   Core-to-EVM HYPE transfer amount with Hyperliquid SDK tick/lot-size helpers instead of
   hard-coding frontend precision.
-- [x] Frontend market state refresh cadence tightened: core market reads poll every 2 seconds,
-  market bet events every 3 seconds, user bet history every 5 seconds, Hyperliquid mids every 3
-  seconds, and visible round countdowns re-render locally every second.
+- [x] Frontend market state refresh keeps visible round countdowns re-rendering locally every
+  second without adding RPC calls.
+- [x] Frontend public RPC pressure reduced: block watching no longer triggers `getLogs` refreshes,
+  default contract reads poll every 10 seconds, market events every 30 seconds, user bet history
+  every 60 seconds, Hyperliquid mids every 10 seconds, quote previews every 3 seconds, and these
+  cadences are configurable with `VITE_*_REFETCH_MS`.
+- [x] Frontend dashboard reads wallet/account state once at the app level and passes it into the
+  market, history, account, and recharge panels, avoiding duplicate balance, allowance, pending
+  payout, and Core balance polling on the same screen.
 - [x] Frontend bet flow includes market custom errors in the ABI, disables the bet button outside
   the active betting window, and maps `InvalidState`, `BetWindowClosed`, `InvalidAmount`, and
   `SlippageExceeded` failures to user-readable messages.
@@ -127,18 +141,19 @@ Last updated: 2026-05-06
   harness.
 - `web/` is the explicit user-facing frontend exception. It is a pure frontend app for Vercel and
   does not introduce a backend, private-key custody, or protocol harness into the Foundry path.
-  Frontend realtime reads may use a configured HyperEVM WebSocket RPC endpoint, with HTTP RPC kept
-  as fallback.
+  Frontend reads may use a configured HyperEVM WebSocket RPC endpoint, with HTTP RPC kept as
+  fallback. Public-RPC defaults are intentionally conservative and configurable.
 - Deployment remains Foundry-first and uses `.env` plus `script/deploy.sh`; generated `broadcast/`
   artifacts are not committed. The default deployment target is Hyperliquid EVM mainnet.
 - Operations remain Foundry/cast based and repo-local. The operator runner is not a production Go
-  watcher, risk engine, or off-chain oracle service.
+  watcher, risk engine, or off-chain oracle service. Its default loop cadence and read-side retry
+  backoff are tuned to reduce public Hyperliquid EVM RPC pressure.
 - The live market-maker harness is a rehearsal tool for contract interaction coverage. It is not a
   production market maker, does not seek profit, and keeps generated private keys only in an ignored
   local env file. Harness transaction sends default to async mode with explicit gas settings to
   avoid aborting on transient Hyperliquid RPC receipt-polling block-height errors. The harness also
   avoids submitting bets too close to `stopBetTime`, continues watching if a bet races a round
-  state transition, and uses low-latency event-log polling by default because the public
+  state transition, and uses conservative event-log polling by default because the public
   Hyperliquid EVM RPC does not expose websocket subscriptions. Third-party websocket RPCs remain
   supported by setting `WS_RPC_URL`. Read-side RPC calls retry transient failures with
   `RPC_TRANSIENT_RETRIES` and `RPC_TRANSIENT_BACKOFF_SECONDS`; transaction sends are still not

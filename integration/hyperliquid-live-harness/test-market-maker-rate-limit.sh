@@ -42,13 +42,14 @@ if [ "${1:-}" = "logs" ]; then
     echo "Error: Max retries exceeded server returned an error response: error code -32005: rate limited" >&2
     exit 1
   fi
-  echo "[]"
+  echo '[{"topics":["0x5b70029c2661c4a9199ccdd6b370f084615aa3e33d2327ed901579b698ab5a32","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000011"],"transactionHash":"0xabc"}]'
   exit 0
 fi
 
 if [ "${1:-}" = "call" ]; then
   case "$args" in
     *"currentRoundId()(uint256)"*)
+      count_call current_round >/dev/null
       echo "2"
       ;;
     *"rounds(uint256)"*)
@@ -86,6 +87,8 @@ set +e
 output="$(
   PATH="$TMP_DIR/bin:$PATH" \
   FAKE_CAST_STATE_DIR="$TMP_DIR/state" \
+  ENV_FILE="$TMP_DIR/missing-market-maker.env" \
+  ROOT_ENV_FILE="$TMP_DIR/missing-root.env" \
   RPC_URL="http://fake.invalid" \
   CHAIN_ID="999" \
   MARKET_ADDRESS="0x0000000000000000000000000000000000000001" \
@@ -123,6 +126,19 @@ fi
 if ! printf '%s\n' "$output" | grep -q "Transient RPC read error"; then
   printf '%s\n' "$output"
   echo "Expected transient RPC retry message." >&2
+  exit 1
+fi
+
+if ! printf '%s\n' "$output" | grep -q "skipping chain state read"; then
+  printf '%s\n' "$output"
+  echo "Expected maker BetPlaced events to avoid chain state reads." >&2
+  exit 1
+fi
+
+current_round_calls="$(cat "$TMP_DIR/state/current_round")"
+if [ "$current_round_calls" -ne 1 ]; then
+  printf '%s\n' "$output"
+  echo "Expected only the startup heartbeat to read currentRoundId; got $current_round_calls" >&2
   exit 1
 fi
 
