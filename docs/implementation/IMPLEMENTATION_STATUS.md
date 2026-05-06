@@ -57,6 +57,9 @@ Last updated: 2026-05-06
   `FOUNDRY_DISABLE_NIGHTLY_WARNING=true`.
 - [x] Live market-maker harness normalizes `cast` numeric reads before shell arithmetic, keeping
   stale-window checks compatible with Foundry output that includes bracketed scientific notation.
+- [x] Live market-maker harness treats transient read-side RPC failures, including Hyperliquid
+  public RPC `-32005` rate limits, as recoverable with configurable backoff and without advancing
+  the log polling cursor past unread chunks.
 - [x] Vercel-ready pure frontend added under `web/` with landing page, wallet connect, HyperCore /
   HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
   claim, and user bet history.
@@ -103,11 +106,14 @@ Last updated: 2026-05-06
 
 ## Verification
 
-- [x] `forge fmt --check`
+- [ ] `forge fmt --check` currently reports formatting diffs in `test/PricePredictionMarket.t.sol`;
+  this rate-limit fix did not modify Solidity formatting.
 - [x] `forge build`
 - [x] `forge test -vvv`
 - [x] `bash -n ops/operator.sh`
 - [x] `bash -n integration/hyperliquid-live-harness/market-maker.sh`
+- [x] `bash -n integration/hyperliquid-live-harness/test-market-maker-rate-limit.sh`
+- [x] `bash integration/hyperliquid-live-harness/test-market-maker-rate-limit.sh`
 - [x] Embedded market-maker websocket listener JavaScript syntax check with `node --check`
 - [x] `web`: `npm run typecheck`
 - [x] `web`: `npm run lint`
@@ -134,5 +140,7 @@ Last updated: 2026-05-06
   avoids submitting bets too close to `stopBetTime`, continues watching if a bet races a round
   state transition, and uses low-latency event-log polling by default because the public
   Hyperliquid EVM RPC does not expose websocket subscriptions. Third-party websocket RPCs remain
-  supported by setting `WS_RPC_URL`.
+  supported by setting `WS_RPC_URL`. Read-side RPC calls retry transient failures with
+  `RPC_TRANSIENT_RETRIES` and `RPC_TRANSIENT_BACKOFF_SECONDS`; transaction sends are still not
+  retried automatically to avoid duplicate submissions.
 - Simulation tests provide practical adversarial coverage, not a formal proof of no arbitrage.

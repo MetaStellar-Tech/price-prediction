@@ -121,6 +121,9 @@ interaction flowing at low cost:
   loop.
 - It normalizes numeric `cast` reads to plain base-10 integers, so Foundry output that includes
   bracketed scientific notation remains safe for shell arithmetic.
+- It treats transient read-side RPC failures such as Hyperliquid public RPC `-32005` rate limits as
+  recoverable. Read calls retry with `RPC_TRANSIENT_BACKOFF_SECONDS`, and log polling keeps the
+  previous `lastSeen` block until the failed chunk is read successfully.
 - If a submitted maker bet still races a state transition and reverts with `InvalidState` or
   `BetWindowClosed`, the harness logs the stale-window result and keeps watching later rounds.
 
@@ -164,6 +167,8 @@ WATCH_MODE=auto
 EVENT_POLL_SECONDS=2
 LOG_LOOKBACK_BLOCKS=4
 LOG_QUERY_BLOCK_SPAN=50
+RPC_TRANSIENT_RETRIES=6
+RPC_TRANSIENT_BACKOFF_SECONDS=8
 WS_RPC_URL=
 WS_RECONNECT_SECONDS=3
 ```
@@ -179,3 +184,8 @@ websocket URL. If `WS_RPC_URL` is set and the websocket connection closes, the l
 
 `LOG_QUERY_BLOCK_SPAN` defaults to `50` to stay within the public Hyperliquid EVM RPC
 `eth_getLogs` range limit.
+
+`RPC_TRANSIENT_RETRIES` and `RPC_TRANSIENT_BACKOFF_SECONDS` apply only to read-side RPC operations
+such as `cast call`, `cast block-number`, `cast block`, `cast balance`, and `cast logs`.
+Transaction sends are not retried automatically, because a failed receipt or RPC response may still
+correspond to a transaction that was accepted by the network.

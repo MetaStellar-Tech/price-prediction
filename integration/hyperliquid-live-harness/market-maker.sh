@@ -41,6 +41,8 @@ MAKER_EXPOSURE_MAX_BPS="${MAKER_EXPOSURE_MAX_BPS:-6000}"
 SLIPPAGE_BPS="${SLIPPAGE_BPS:-500}"
 POLL_SECONDS="${POLL_SECONDS:-12}"
 EVENT_POLL_SECONDS="${EVENT_POLL_SECONDS:-2}"
+RPC_TRANSIENT_RETRIES="${RPC_TRANSIENT_RETRIES:-6}"
+RPC_TRANSIENT_BACKOFF_SECONDS="${RPC_TRANSIENT_BACKOFF_SECONDS:-8}"
 LOG_LOOKBACK_BLOCKS="${LOG_LOOKBACK_BLOCKS:-4}"
 LOG_QUERY_BLOCK_SPAN="${LOG_QUERY_BLOCK_SPAN:-50}"
 WATCH_MODE="${WATCH_MODE:-auto}"
@@ -85,6 +87,30 @@ is_uint() {
     ''|*[!0-9]*) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+is_transient_rpc_error() {
+  printf '%s' "$1" | grep -Eiq 'rate limited|-32005|too many requests|429|max retries exceeded|temporarily unavailable|timeout|timed out'
+}
+
+rpc_read() {
+  local attempt=1 output status
+  while true; do
+    if output="$("$@" 2>&1)"; then
+      printf '%s\n' "$output"
+      return 0
+    else
+      status=$?
+    fi
+    if is_transient_rpc_error "$output" && [ "$attempt" -lt "$RPC_TRANSIENT_RETRIES" ]; then
+      echo "Transient RPC read error: $(printf '%s' "$output" | tr '\n' ' '); retrying in ${RPC_TRANSIENT_BACKOFF_SECONDS}s (attempt $attempt/$RPC_TRANSIENT_RETRIES)." >&2
+      sleep "$RPC_TRANSIENT_BACKOFF_SECONDS"
+      attempt=$((attempt + 1))
+      continue
+    fi
+    printf '%s\n' "$output" >&2
+    return "$status"
+  done
 }
 
 require_wallet_env() {
@@ -186,7 +212,7 @@ format_wei() {
 }
 
 call_market() {
-  cast call --rpc-url "$RPC_URL" "$MARKET_ADDRESS" "$@"
+  rpc_read cast call --rpc-url "$RPC_URL" "$MARKET_ADDRESS" "$@"
 }
 
 send_mode_args() {
@@ -210,7 +236,7 @@ send_market() {
 }
 
 call_token() {
-  cast call --rpc-url "$RPC_URL" "$STAKE_TOKEN" "$@"
+  rpc_read cast call --rpc-url "$RPC_URL" "$STAKE_TOKEN" "$@"
 }
 
 send_token() {
@@ -247,7 +273,7 @@ current_round_id() {
 }
 
 chain_timestamp() {
-  cast block latest --field timestamp --rpc-url "$RPC_URL" | first_uint
+  rpc_read cast block latest --field timestamp --rpc-url "$RPC_URL" | first_uint
 }
 
 round_field() {
@@ -335,7 +361,7 @@ token_balance() {
 }
 
 native_balance() {
-  cast balance --rpc-url "$RPC_URL" "$1"
+  rpc_read cast balance --rpc-url "$RPC_URL" "$1"
 }
 
 allowance() {
@@ -399,6 +425,8 @@ MAKER_EXPOSURE_MAX_BPS=$MAKER_EXPOSURE_MAX_BPS
 SLIPPAGE_BPS=$SLIPPAGE_BPS
 POLL_SECONDS=$POLL_SECONDS
 EVENT_POLL_SECONDS=$EVENT_POLL_SECONDS
+RPC_TRANSIENT_RETRIES=$RPC_TRANSIENT_RETRIES
+RPC_TRANSIENT_BACKOFF_SECONDS=$RPC_TRANSIENT_BACKOFF_SECONDS
 LOG_LOOKBACK_BLOCKS=$LOG_LOOKBACK_BLOCKS
 LOG_QUERY_BLOCK_SPAN=$LOG_QUERY_BLOCK_SPAN
 WATCH_MODE=$WATCH_MODE
@@ -804,7 +832,7 @@ poll_loop() {
 }
 
 latest_block_number() {
-  cast block-number --rpc-url "$RPC_URL"
+  rpc_read cast block-number --rpc-url "$RPC_URL"
 }
 
 poll_bet_logs() {
@@ -812,7 +840,7 @@ poll_bet_logs() {
   local to_block="$2"
   local logs tmp
   tmp="$(mktemp)"
-  if ! cast logs --json --rpc-url "$RPC_URL" --from-block "$from_block" --to-block "$to_block" \
+  if ! rpc_read cast logs --json --rpc-url "$RPC_URL" --from-block "$from_block" --to-block "$to_block" \
     --address "$MARKET_ADDRESS" "$BET_PLACED_TOPIC" > "$tmp"; then
     rm -f "$tmp"
     return 1
@@ -848,8 +876,13 @@ NODE
 }
 
 log_poll_loop() {
-  local latest last_seen from_block to_block chunk_to event_round event_account event_tx
-  latest="$(latest_block_number)"
+  local latest last_seen from_block to_block chunk_to event_round event_account event_tx log_rows chunk_failed
+  if ! latest="$(latest_block_number)"; then
+    until latest="$(latest_block_number)"; do
+      echo "Unable to read latest block after retries; waiting ${RPC_TRANSIENT_BACKOFF_SECONDS}s before starting log polling." >&2
+      sleep "$RPC_TRANSIENT_BACKOFF_SECONDS"
+    done
+  fi
   if [ "$latest" -gt "$LOG_LOOKBACK_BLOCKS" ]; then
     last_seen=$((latest - LOG_LOOKBACK_BLOCKS))
   else
@@ -861,22 +894,36 @@ log_poll_loop() {
   local last_heartbeat
   last_heartbeat="$(date +%s)"
   while true; do
-    latest="$(latest_block_number)"
+    if ! latest="$(latest_block_number)"; then
+      echo "Unable to read latest block after retries; keeping lastSeen=$last_seen and waiting ${RPC_TRANSIENT_BACKOFF_SECONDS}s." >&2
+      sleep "$RPC_TRANSIENT_BACKOFF_SECONDS"
+      continue
+    fi
     from_block=$((last_seen + 1))
     to_block="$latest"
 
+    chunk_failed=0
     while [ "$from_block" -le "$to_block" ]; do
       chunk_to=$((from_block + LOG_QUERY_BLOCK_SPAN - 1))
       if [ "$chunk_to" -gt "$to_block" ]; then
         chunk_to="$to_block"
       fi
+      if ! log_rows="$(poll_bet_logs "$from_block" "$chunk_to")"; then
+        echo "Unable to read BetPlaced logs for blocks $from_block-$chunk_to after retries; keeping lastSeen=$last_seen." >&2
+        chunk_failed=1
+        break
+      fi
       while IFS=$'\t' read -r event_round event_account event_tx; do
         [ -z "$event_round" ] && continue
         process_market_activity bet "$event_round" "$event_account" "$event_tx"
-      done < <(poll_bet_logs "$from_block" "$chunk_to")
+      done <<< "$log_rows"
       last_seen="$chunk_to"
       from_block=$((chunk_to + 1))
     done
+    if [ "$chunk_failed" -eq 1 ]; then
+      sleep "$RPC_TRANSIENT_BACKOFF_SECONDS"
+      continue
+    fi
 
     local now
     now="$(date +%s)"
