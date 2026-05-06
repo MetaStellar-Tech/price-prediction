@@ -48,6 +48,10 @@ Last updated: 2026-05-06
   low-latency `eth_getLogs` polling with `EVENT_POLL_SECONDS=2`; `WATCH_MODE=poll` remains
   available for the older state polling-only mode. Log polling chunks requests at
   `LOG_QUERY_BLOCK_SPAN=50`.
+- [x] Live market-maker harness loads its local wallet env before the repo-root `.env`, so root
+  deployment values keep operator, web, and market-maker contract targets aligned.
+- [x] Live market-maker harness suppresses Foundry nightly-build warnings by default with
+  `FOUNDRY_DISABLE_NIGHTLY_WARNING=true`.
 - [x] Vercel-ready pure frontend added under `web/` with landing page, wallet connect, HyperCore /
   HyperEVM account panels, recharge action previews, betting, permissionless settle, pending payout
   claim, and user bet history.

@@ -7,17 +7,17 @@ ENV_FILE="${ENV_FILE:-$HARNESS_DIR/.market-maker.env}"
 ROOT_ENV_FILE="${ROOT_ENV_FILE:-$ROOT_DIR/.env}"
 ACTION="${1:-status}"
 
-if [ -f "$ROOT_ENV_FILE" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$ROOT_ENV_FILE"
-  set +a
-fi
-
 if [ -f "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
   . "$ENV_FILE"
+  set +a
+fi
+
+if [ -f "$ROOT_ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ROOT_ENV_FILE"
   set +a
 fi
 
@@ -58,6 +58,8 @@ GAS_PRICE_WEI="${GAS_PRICE_WEI:-3100000000}"
 MARKET_GAS_LIMIT="${MARKET_GAS_LIMIT:-500000}"
 TOKEN_GAS_LIMIT="${TOKEN_GAS_LIMIT:-80000}"
 HYPE_TRANSFER_GAS_LIMIT="${HYPE_TRANSFER_GAS_LIMIT:-21000}"
+FOUNDRY_DISABLE_NIGHTLY_WARNING="${FOUNDRY_DISABLE_NIGHTLY_WARNING:-true}"
+export FOUNDRY_DISABLE_NIGHTLY_WARNING
 
 require_env() {
   local name="$1"

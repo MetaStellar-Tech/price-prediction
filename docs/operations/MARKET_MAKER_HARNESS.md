@@ -31,7 +31,14 @@ RPC_URL=https://rpc.hyperliquid.xyz/evm
 CHAIN_ID=999
 MARKET_ADDRESS=0xF124B81dc9744C3E8Fd68886b04A3722628ea2e7
 STAKE_TOKEN=0xb88339CB7199b77E23DB6E890353E22632Ba630f
+FOUNDRY_DISABLE_NIGHTLY_WARNING=true
 ```
+
+The harness loads its local wallet env first, then loads the repo-root `.env`. Shared deployment
+values such as `RPC_URL`, `CHAIN_ID`, `MARKET_ADDRESS`, and `STAKE_TOKEN` should be maintained in
+the root `.env` so the operator runner, web app defaults, and market-maker harness target the same
+contract. `FOUNDRY_DISABLE_NIGHTLY_WARNING` defaults to `true` inside the harness so repeated
+Foundry/cast reads do not pollute status and loop output.
 
 After wallet initialization, fund the printed collector address with enough USDC and HYPE for the
 rehearsal. The collector funds each maker up to `10 USDC` and `0.02 HYPE`.
