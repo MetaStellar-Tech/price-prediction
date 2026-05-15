@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-05-06
+Last updated: 2026-05-15
 
 ## Completed And Verified
 
@@ -117,6 +117,8 @@ Last updated: 2026-05-06
   keeping HTTP RPC as fallback.
 - [x] Frontend bet history shows recent bet amount, round number, settled result, estimated payout,
   and ROI by joining user `BetPlaced` logs with `rounds(roundId)` reads.
+- [x] Repository license metadata updated to `BUSL-1.1` with matching README license summary and
+  Solidity SPDX identifiers across protocol, script, and test sources.
 
 ## Verification
 
@@ -132,6 +134,8 @@ Last updated: 2026-05-06
 - [x] `web`: `npm run typecheck`
 - [x] `web`: `npm run lint`
 - [x] `web`: `npm run build`
+- [x] License metadata check: no remaining `MIT` SPDX identifiers in `src/`, `script/`, or `test/`.
+- [x] `git diff --check`
 
 ## Current Boundaries
 

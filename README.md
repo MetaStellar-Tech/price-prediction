@@ -2,6 +2,14 @@
 
 PricePrediction is primarily a Solidity / Foundry protocol repository for a token-price-driven prediction market on Hyperliquid HyperEVM.
 
+## Overview
+
+PricePrediction is a source-available Hyperliquid prediction market protocol. It lets users bet on
+whether a token price will move up or down during a fixed round, settles the result on HyperEVM, and
+uses HyperCore price data as the oracle source. The repository focuses on the protocol contracts,
+Foundry tests, deployment and operation scripts, live Hyperliquid rehearsal harnesses, and a small
+Vercel-ready frontend in `web/`.
+
 HyperEVM is the betting and settlement truth layer. HyperCore is the oracle price source. The V1 protocol reads BTC perp oracle prices through Hyperliquid native CoreRead / L1Read precompiles and settles each round on-chain.
 
 The explicit repository exception is `web/`, a Vercel-ready pure frontend for real users to connect
@@ -132,3 +140,10 @@ npm run build
 
 See `web/README.md` for Vercel environment variables, supported network assumptions, and wallet
 signature safety notes.
+
+## License
+
+This project is source-available under the Business Source License 1.1 (`BUSL-1.1`). Production use,
+including commercial operation of this protocol or a modified version, requires a separate commercial
+license from MetaStellar-Tech unless and until the Change License applies. See `LICENSE` for the full
+terms, including the Change Date and Change License.
